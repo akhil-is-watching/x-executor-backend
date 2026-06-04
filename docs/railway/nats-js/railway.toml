@@ -9,7 +9,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "docs/railway/nats-js/Dockerfile"
-dockerContextPath = "docs/railway/nats-js"
+# Build context is the repo root (Railway default). COPY paths in the Dockerfile are relative to /.
 watchPatterns = ["docs/railway/nats-js/**"]
 
 [deploy]

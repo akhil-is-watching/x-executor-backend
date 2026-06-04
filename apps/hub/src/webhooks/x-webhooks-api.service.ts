@@ -33,6 +33,10 @@ export class XWebhooksApiService {
     return config.id;
   }
 
+  /**
+   * Subscribe a user to Account Activity events.
+   * X requires OAuth 2.0 User Context for POST subscriptions/all.
+   */
   async subscribeUser(
     xWebhookConfigId: string,
     userAccessToken: string,
@@ -44,32 +48,36 @@ export class XWebhooksApiService {
         {},
       );
     } catch (err: unknown) {
-      const detail =
-        err instanceof Error
-          ? `${err.message} | data: ${JSON.stringify((err as Record<string, unknown>)['data'] ?? (err as Record<string, unknown>)['errors'] ?? '')}`
-          : String(err);
-      throw new Error(`X account activity subscription failed: ${detail}`);
+      const xData = (err as Record<string, unknown>)['data'];
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `X account activity subscription failed: ${detail} | data: ${JSON.stringify(xData ?? '')}`,
+      );
     }
   }
 
+  /**
+   * Remove a user's Account Activity subscription.
+   * X requires OAuth 2.0 Application-Only (app bearer) for DELETE subscriptions/:user_id/all.
+   */
   async unsubscribeUser(
     xWebhookConfigId: string,
-    userAccessToken: string,
+    _userAccessToken: string,
     xUserId: string,
   ): Promise<void> {
-    const userClient = new TwitterApi(userAccessToken);
+    const appClient = await this.getAppOnlyClient();
     try {
-      await userClient.v2.delete(
+      await appClient.v2.delete(
         `account_activity/webhooks/${xWebhookConfigId}/subscriptions/${xUserId}/all`,
       );
     } catch (err: unknown) {
       const status = (err as { code?: number })?.code;
       if (status === 404) return;
-      const detail =
-        err instanceof Error
-          ? `${err.message} | data: ${JSON.stringify((err as Record<string, unknown>)['data'] ?? '')}`
-          : String(err);
-      throw new Error(`X account activity unsubscribe failed: ${detail}`);
+      const xData = (err as Record<string, unknown>)['data'];
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `X account activity unsubscribe failed: ${detail} | data: ${JSON.stringify(xData ?? '')}`,
+      );
     }
   }
 

@@ -3,6 +3,8 @@ import { SenderModule } from './sender.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(SenderModule);
-  await app.listen(process.env.port ?? 3000);
+  const port =
+    process.env.SENDER_PORT ?? process.env.PORT ?? process.env.port ?? 3003;
+  await app.listen(port);
 }
 bootstrap();

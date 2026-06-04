@@ -16,6 +16,8 @@ export const NATS_SUBJECT_DM_REPLY_READY = 'x.dm.reply.ready' as const;
 
 export const NATS_DURABLE_PROCESSOR_WEBHOOK = 'processor-webhook' as const;
 
+export const NATS_DURABLE_SENDER_DM_REPLY = 'sender-dm-reply' as const;
+
 /** Delivery attempts before a failed message is published to the DLQ and terminated. */
 export const NATS_MAX_DELIVER = 5 as const;
 

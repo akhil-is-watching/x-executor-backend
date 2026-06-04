@@ -65,4 +65,32 @@ describe('GetxapiService', () => {
     );
     expect(result.conversation_id).toBe('1-2');
   });
+
+  it('sendDm calls GetXAPI', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'success',
+        data: { id: 'msg-1' },
+      }),
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await service.sendDm({
+      authToken: 'auth',
+      recipientId: '123',
+      text: 'hello',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.getxapi.com/twitter/dm/send',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      auth_token: 'auth',
+      recipient_id: '123',
+      text: 'hello',
+    });
+    expect(result.status).toBe('success');
+  });
 });

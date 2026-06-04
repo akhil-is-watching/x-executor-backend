@@ -22,3 +22,23 @@ export interface FetchConversationParams {
   cursor?: string;
   count?: number;
 }
+
+export interface SendDmParams {
+  authToken: string;
+  recipientId?: string;
+  recipientUsername?: string;
+  text: string;
+}
+
+export interface GetXApiSendDmResponse {
+  status: string;
+  msg?: string;
+  data?: {
+    id: string;
+    createdAt?: string;
+    senderId?: string;
+    recipientId?: string;
+    text?: string;
+    recipient_username?: string;
+  };
+}

@@ -1,0 +1,18 @@
+# DM sender — set this path in Railway: /docs/railway/sender/railway.toml
+
+[build]
+buildCommand = "yarn build:sender"
+watchPatterns = [
+  "apps/sender/**",
+  "libs/**",
+  "package.json",
+  "yarn.lock",
+  "nest-cli.json",
+  "tsconfig*.json",
+  "webpack.config.js",
+]
+
+[deploy]
+startCommand = "yarn start:sender:prod"
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import {
   NATS_DURABLE_PROCESSOR_WEBHOOK,
   NATS_SUBJECT_WEBHOOK_RECEIVED,
@@ -8,7 +8,7 @@ import type { XWebhookReceivedEvent } from '@app/shared';
 import { DmPipelineService } from './dm-pipeline.service';
 
 @Injectable()
-export class WebhookConsumerService implements OnModuleInit {
+export class WebhookConsumerService implements OnApplicationBootstrap {
   private readonly logger = new Logger(WebhookConsumerService.name);
 
   constructor(
@@ -16,7 +16,7 @@ export class WebhookConsumerService implements OnModuleInit {
     private readonly dmPipeline: DmPipelineService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  async onApplicationBootstrap(): Promise<void> {
     this.logger.log(
       `Starting JetStream consumer ${NATS_DURABLE_PROCESSOR_WEBHOOK} on ${NATS_SUBJECT_WEBHOOK_RECEIVED}`,
     );
@@ -24,7 +24,13 @@ export class WebhookConsumerService implements OnModuleInit {
     await this.natsJs.startJsonConsumer<XWebhookReceivedEvent>({
       filterSubject: NATS_SUBJECT_WEBHOOK_RECEIVED,
       durable: NATS_DURABLE_PROCESSOR_WEBHOOK,
-      handler: (event) => this.dmPipeline.handleWebhookEvent(event),
+      handler: async (event) => {
+        this.logger.log(
+          `NATS webhook event received eventId=${event.eventId} ` +
+            `@${event.xUsername} types=[${event.eventTypes.join(', ')}]`,
+        );
+        await this.dmPipeline.handleWebhookEvent(event);
+      },
     });
   }
 }

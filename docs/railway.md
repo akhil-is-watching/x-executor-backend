@@ -91,6 +91,30 @@ You should see `HTTP POST` + `X webhook POST received` in Railway. If that works
 
 If you see `signature verification failed`, fix `X_CONSUMER_SECRET` on Webhook (= API Key Secret). If you see `No active connection for for_user_id=...`, re-OAuth so Hub stores the v2 user id that matches `for_user_id`.
 
+## Processor not receiving NATS events
+
+Webhook publishes to JetStream subject `x.webhook.received` after a successful POST. Processor consumes with durable `processor-webhook`.
+
+**Expected logs**
+
+| Service | Log line |
+|---------|----------|
+| Webhook | `Published x.webhook.received eventId=...` |
+| Processor (startup) | `NATS JetStream ready` → `Consumer processor-webhook listening` |
+| Processor (per event) | `NATS webhook event received` → then either `Skipping non-DM` or `Processing DM` |
+
+**Checklist**
+
+1. **Same `NATS_URL` on Webhook and Processor** — use the private NATS service reference on port **4222** (not `8222`):
+   ```bash
+   NATS_URL=nats://${{Nats.RAILWAY_PRIVATE_DOMAIN}}:4222
+   ```
+2. **Processor service is running** — it has no public URL; confirm deploy is healthy (`GET /` on its internal port).
+3. **Webhook shows NATS publish** — if you see `X webhook processed → 1 NATS event(s)` but no `Published x.webhook.received`, redeploy Webhook with latest code or check for publish errors in logs.
+4. **Favorites / tweets are not DMs** — Processor **ignores** non-`direct_message_events` after logging `Skipping non-DM`. A favorite test proves Webhook → NATS → Processor; it will **not** run the DM/LLM pipeline.
+5. **DM pipeline prerequisites** (after `Processing DM`): same `MONGODB_URI` as Hub, org **system prompt** set, connection **auth token** set in admin UI, `TOKEN_ENCRYPTION_KEY` matches Hub, GetXAPI/OpenAI/Redis env on Processor.
+6. **XChat / encrypted DMs** — no webhook from X means nothing reaches NATS (see [CREATE_AND_INTEGRATE_FRONTEND.md](./CREATE_AND_INTEGRATE_FRONTEND.md#dm-webhooks-and-xchat-platform-limitation)).
+
 **Hub env (defaults on):**
 
 - `X_API_KEY` / `X_API_KEY_SECRET` — Consumer Keys (OAuth 1.0a user connect + app bearer).

@@ -40,8 +40,14 @@ export class DmPipelineService {
 
   async handleWebhookEvent(event: XWebhookReceivedEvent): Promise<void> {
     if (!isDirectMessageWebhook(event.eventTypes)) {
+      this.logger.log(
+        `Skipping non-DM webhook eventId=${event.eventId} ` +
+          `(processor only handles direct_message_events; got [${event.eventTypes.join(', ')}])`,
+      );
       return;
     }
+
+    this.logger.log(`Processing DM webhook eventId=${event.eventId}`);
 
     const dmContext = parseInboundDmFromWebhook(event.payload, event.xUserId);
     if (!dmContext) {

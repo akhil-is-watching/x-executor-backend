@@ -50,6 +50,9 @@ export class NatsJsService implements OnModuleInit, OnModuleDestroy {
     const jsm = await this.nc.jetstreamManager();
     await this.ensureStream(jsm, NATS_STREAM_NAME, [...NATS_STREAM_SUBJECTS]);
     await this.ensureStream(jsm, NATS_DLQ_STREAM_NAME, [...NATS_DLQ_STREAM_SUBJECTS]);
+    this.logger.log(
+      `NATS JetStream ready (stream=${NATS_STREAM_NAME}, url=${url})`,
+    );
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -85,13 +88,22 @@ export class NatsJsService implements OnModuleInit, OnModuleDestroy {
     };
     this.stopFns.push(stop);
 
-    void this.runConsumerLoop(messages, options);
+    void this.runConsumerLoop(messages, options).catch((err) => {
+      this.logger.error(
+        `Consumer ${options.durable} loop exited on ${options.filterSubject}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    });
   }
 
   private async runConsumerLoop<T>(
     messages: ConsumerMessages,
     options: JsonConsumerOptions<T>,
   ): Promise<void> {
+    this.logger.log(
+      `Consumer ${options.durable} listening on ${options.filterSubject}`,
+    );
+
     for await (const msg of messages) {
       const deliveryCount = msg.info.deliveryCount;
 

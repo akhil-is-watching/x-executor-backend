@@ -73,6 +73,10 @@ export class IncomingService {
         payload,
       };
       await this.natsJs.publishJson(NATS_SUBJECT_WEBHOOK_RECEIVED, event);
+      this.logger.log(
+        `Published ${NATS_SUBJECT_WEBHOOK_RECEIVED} eventId=${event.eventId} ` +
+          `orgId=${event.orgId} types=[${eventTypes.join(', ')}]`,
+      );
       eventIds.push(event.eventId);
     }
 

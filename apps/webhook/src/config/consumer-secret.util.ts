@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 export function getXConsumerSecret(config: ConfigService): string {
   const raw =
     config.get<string>('X_CONSUMER_SECRET') ??
+    config.get<string>('X_API_KEY_SECRET') ??
     config.getOrThrow<string>('X_CLIENT_SECRET');
   return raw.trim();
 }

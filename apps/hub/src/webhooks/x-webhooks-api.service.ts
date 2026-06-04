@@ -63,8 +63,8 @@ export class XWebhooksApiService {
   }
 
   private async getAppOnlyClient(): Promise<TwitterApi> {
-    const appKey = this.config.getOrThrow<string>('X_CLIENT_ID');
-    const appSecret = this.config.getOrThrow<string>('X_CLIENT_SECRET');
+    const appKey = this.config.getOrThrow<string>('X_API_KEY');
+    const appSecret = this.config.getOrThrow<string>('X_API_KEY_SECRET');
     const userClient = new TwitterApi({ appKey, appSecret });
     return userClient.appLogin();
   }

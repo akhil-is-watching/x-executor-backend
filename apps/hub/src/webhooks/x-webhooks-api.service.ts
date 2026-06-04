@@ -38,10 +38,18 @@ export class XWebhooksApiService {
     userAccessToken: string,
   ): Promise<void> {
     const userClient = new TwitterApi(userAccessToken);
-    await userClient.v2.post(
-      `account_activity/webhooks/${xWebhookConfigId}/subscriptions/all`,
-      {},
-    );
+    try {
+      await userClient.v2.post(
+        `account_activity/webhooks/${xWebhookConfigId}/subscriptions/all`,
+        {},
+      );
+    } catch (err: unknown) {
+      const detail =
+        err instanceof Error
+          ? `${err.message} | data: ${JSON.stringify((err as Record<string, unknown>)['data'] ?? (err as Record<string, unknown>)['errors'] ?? '')}`
+          : String(err);
+      throw new Error(`X account activity subscription failed: ${detail}`);
+    }
   }
 
   async unsubscribeUser(
@@ -56,9 +64,12 @@ export class XWebhooksApiService {
       );
     } catch (err: unknown) {
       const status = (err as { code?: number })?.code;
-      if (status !== 404) {
-        throw err;
-      }
+      if (status === 404) return;
+      const detail =
+        err instanceof Error
+          ? `${err.message} | data: ${JSON.stringify((err as Record<string, unknown>)['data'] ?? '')}`
+          : String(err);
+      throw new Error(`X account activity unsubscribe failed: ${detail}`);
     }
   }
 

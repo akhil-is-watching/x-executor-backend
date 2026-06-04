@@ -50,7 +50,8 @@ export class WebhooksService implements OnModuleInit {
    */
   async subscribeForConnection(
     connection: XConnectionDocument,
-    userAccessToken: string,
+    accessToken: string,
+    accessTokenSecret: string,
   ): Promise<ConnectionSubscriptionResult> {
     const webhookUrl = this.getSharedWebhookUrl();
     await this.revokeForConnection(connection);
@@ -61,7 +62,11 @@ export class WebhooksService implements OnModuleInit {
     if (this.xWebhooksApi.isEnabled()) {
       try {
         xWebhookConfigId = await this.xWebhooksApi.ensureAppWebhookRegistered();
-        await this.xWebhooksApi.subscribeUser(xWebhookConfigId, userAccessToken);
+        await this.xWebhooksApi.subscribeUser(
+          xWebhookConfigId,
+          accessToken,
+          accessTokenSecret,
+        );
         subscribed = true;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -97,10 +102,8 @@ export class WebhooksService implements OnModuleInit {
 
     if (active?.xWebhookConfigId && this.xWebhooksApi.isEnabled()) {
       try {
-        const accessToken = this.tokenCrypto.decrypt(connection.accessTokenEnc);
         await this.xWebhooksApi.unsubscribeUser(
           active.xWebhookConfigId,
-          accessToken,
           connection.xUserId,
         );
       } catch (err) {

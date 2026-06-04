@@ -21,6 +21,9 @@ export class XConnection {
   accessTokenEnc!: string;
 
   @Prop()
+  accessTokenSecretEnc?: string;
+
+  @Prop()
   authTokenEnc?: string;
 
   @Prop()

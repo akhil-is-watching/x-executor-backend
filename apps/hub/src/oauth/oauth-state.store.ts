@@ -3,7 +3,7 @@ import { RedisService } from '@app/redis';
 
 export interface OAuthStatePayload {
   inviteToken: string;
-  codeVerifier: string;
+  oauthTokenSecret: string;
   orgId: string;
 }
 
@@ -13,16 +13,16 @@ const TTL_SECONDS = 600;
 export class OAuthStateStore {
   constructor(private readonly redis: RedisService) {}
 
-  private key(stateId: string): string {
-    return `oauth:state:${stateId}`;
+  private key(oauthToken: string): string {
+    return `oauth:state:${oauthToken}`;
   }
 
-  async save(stateId: string, payload: OAuthStatePayload): Promise<void> {
-    await this.redis.setJson(this.key(stateId), payload, TTL_SECONDS);
+  async save(oauthToken: string, payload: OAuthStatePayload): Promise<void> {
+    await this.redis.setJson(this.key(oauthToken), payload, TTL_SECONDS);
   }
 
-  async consume(stateId: string): Promise<OAuthStatePayload | null> {
-    const key = this.key(stateId);
+  async consume(oauthToken: string): Promise<OAuthStatePayload | null> {
+    const key = this.key(oauthToken);
     const payload = await this.redis.getJson<OAuthStatePayload>(key);
     if (payload) {
       await this.redis.del(key);

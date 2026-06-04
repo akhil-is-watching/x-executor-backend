@@ -6,8 +6,6 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     'TOKEN_ENCRYPTION_KEY',
     'HUB_PUBLIC_BASE_URL',
     'WEBHOOK_PUBLIC_BASE_URL',
-    'X_CLIENT_ID',
-    'X_CLIENT_SECRET',
     'X_API_KEY',
     'X_API_KEY_SECRET',
     'X_REDIRECT_URI',

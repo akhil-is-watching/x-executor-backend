@@ -32,15 +32,16 @@ describe('Hub (e2e)', () => {
   };
 
   const mockXApi = {
-    buildAuthorizeUrl: jest.fn(
-      () => 'https://twitter.com/i/oauth2/authorize?mock=1',
-    ),
-    exchangeCodeForTokens: jest.fn(async () => ({
-      access_token: 'access',
-      refresh_token: 'refresh',
-      expires_in: 7200,
-      scope: 'tweet.read users.read',
-      token_type: 'bearer',
+    getRequestToken: jest.fn(async () => ({
+      oauthToken: 'oauth-token-test',
+      oauthTokenSecret: 'oauth-secret-test',
+      authUrl: 'https://api.twitter.com/oauth/authorize?oauth_token=oauth-token-test',
+    })),
+    exchangeVerifierForTokens: jest.fn(async () => ({
+      accessToken: 'access',
+      accessTokenSecret: 'access-secret',
+      userId: 'x-user-1',
+      screenName: 'testuser',
     })),
     fetchCurrentUser: jest.fn(async () => ({
       id: 'x-user-1',
@@ -58,11 +59,10 @@ describe('Hub (e2e)', () => {
     process.env.TOKEN_ENCRYPTION_KEY = encryptionKey;
     process.env.HUB_PUBLIC_BASE_URL = 'http://localhost:3000';
     process.env.WEBHOOK_PUBLIC_BASE_URL = 'http://localhost:3001';
-    process.env.X_CLIENT_ID = 'test-client';
-    process.env.X_CLIENT_SECRET = 'test-secret';
+    process.env.X_API_KEY = 'test-api-key';
+    process.env.X_API_KEY_SECRET = 'test-api-secret';
     process.env.X_REDIRECT_URI =
       'http://localhost:3000/api/v1/oauth/x/callback';
-    process.env.X_OAUTH_SCOPES = 'tweet.read users.read';
     process.env.X_REGISTER_WEBHOOKS_WITH_X = 'false';
 
     HubModule = require('../src/hub.module').HubModule;
@@ -123,16 +123,16 @@ describe('Hub (e2e)', () => {
       .send({ expiresInHours: 24, maxUses: 5 })
       .expect(201);
 
-    const stateId = 'test-state-id';
-    await app.get(OAuthStateStore).save(stateId, {
+    const oauthToken = 'oauth-token-test';
+    await app.get(OAuthStateStore).save(oauthToken, {
       inviteToken: invite.body.inviteToken,
-      codeVerifier: 'test-verifier',
+      oauthTokenSecret: 'oauth-secret-test',
       orgId,
     });
 
     const callback = await request(app.getHttpServer())
       .get('/api/v1/oauth/x/callback')
-      .query({ code: 'auth-code', state: stateId })
+      .query({ oauth_token: oauthToken, oauth_verifier: 'oauth-verifier-test' })
       .expect(200);
 
     expect(callback.body.webhookUrl).toBe(

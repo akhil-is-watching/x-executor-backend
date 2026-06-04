@@ -42,7 +42,7 @@ For local development, the root `.env.example` still lists all variables in one 
      Rename `Nats` in references to match your Railway service name.
 
 4. **Shared secrets** must match across services:
-   - `X_CLIENT_SECRET` — hub and webhook
+   - `X_API_KEY_SECRET` — hub (OAuth 1.0a) and webhook CRC (`X_CONSUMER_SECRET` or `X_API_KEY_SECRET`)
    - `TOKEN_ENCRYPTION_KEY` — hub and processor (generate with `openssl rand -base64 32`)
    - NATS subjects/durables are fixed in code (`libs/nats-js/src/nats.constants.ts`); only `NATS_URL` is configured per environment
 
@@ -60,21 +60,22 @@ All connections use one ingress URL on the Webhook service:
 
 `https://<webhook-service>/api/v1/webhooks/incoming`
 
-On each X OAuth, Hub:
+On each X OAuth (OAuth 1.0a 3-legged), Hub:
 
-1. Registers that URL with X once (`POST /2/webhooks`) — idempotent.
-2. Subscribes the user (`POST /2/account_activity/webhooks/:config_id/subscriptions/all`).
+1. Registers that URL with X once (`POST /2/webhooks`) — idempotent (app bearer).
+2. Subscribes the user (`POST /2/account_activity/webhooks/:config_id/subscriptions/all`) using OAuth 1.0a user tokens.
 3. Stores a subscription row in MongoDB (`connection_webhooks`).
 
 The Webhook app routes events by `for_user_id` in the payload (fans out if the same X user is linked to multiple orgs).
 
 **Hub env (defaults on):**
 
+- `X_API_KEY` / `X_API_KEY_SECRET` — Consumer Keys (OAuth 1.0a user connect + app bearer).
+- `X_REDIRECT_URI` — OAuth 1.0a callback URL (also add in Developer Portal).
 - `X_REGISTER_WEBHOOKS_WITH_X` — set to `false` to skip X API calls (local dev without AAAPI).
 - `X_WEBHOOK_CONFIG_ID` — optional; skip `POST /2/webhooks` if you already know the config id.
-- `X_OAUTH_SCOPES` — include `dm.read` / `dm.write` for DM events.
 - `WEBHOOK_PUBLIC_BASE_URL` — public HTTPS Webhook service (CRC + POST target).
-- **Webhook service CRC:** set `X_CONSUMER_SECRET` to the **API Key Secret** (Consumer Keys in Developer Portal). If unset, `X_CLIENT_SECRET` is used. Hub OAuth can keep `X_CLIENT_SECRET`; they are only the same when your portal shows one secret.
+- **Webhook service CRC:** set `X_CONSUMER_SECRET` to the **API Key Secret** (same as `X_API_KEY_SECRET`).
 
 **CRC error `Invalid response_token`:** almost always wrong secret or wrong URL path. Register exactly `https://<webhook-host>/api/v1/webhooks/incoming` (no trailing slash). On the **Webhook** Railway service, set `X_CONSUMER_SECRET` to the API Key Secret, redeploy, then re-validate in X console.
 

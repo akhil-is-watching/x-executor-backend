@@ -8,11 +8,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type { Response } from 'express';
 import { InvitesService } from '../invites/invites.service';
-import {
-  generateCodeChallenge,
-  generateCodeVerifier,
-  generateStateId,
-} from '../crypto/pkce.util';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
 import { XApiService } from './x-api.service';
 import { OAuthStateStore } from './oauth-state.store';
@@ -37,50 +32,63 @@ export class OAuthService {
 
   async startOAuth(inviteToken: string, res: Response): Promise<void> {
     const invite = await this.invitesService.findValidInviteByToken(inviteToken);
-    const codeVerifier = generateCodeVerifier();
-    const codeChallenge = generateCodeChallenge(codeVerifier);
-    const stateId = generateStateId();
+    const redirectUri = this.config.getOrThrow<string>('X_REDIRECT_URI');
 
-    await this.stateStore.save(stateId, {
+    const requestToken = await this.xApi.getRequestToken(redirectUri);
+
+    await this.stateStore.save(requestToken.oauthToken, {
       inviteToken,
-      codeVerifier,
+      oauthTokenSecret: requestToken.oauthTokenSecret,
       orgId: invite.orgId.toString(),
     });
 
-    const url = this.xApi.buildBrowserAuthorizeUrl({
-      state: stateId,
-      codeChallenge,
-    });
-    res.redirect(url);
+    res.redirect(requestToken.authUrl);
   }
 
   async handleCallback(
     query: {
-      code?: string;
-      state?: string;
+      oauth_token?: string;
+      oauth_verifier?: string;
+      denied?: string;
       error?: string;
       error_description?: string;
     },
     res: Response,
   ): Promise<void> {
-    if (query.error) {
-      const message = query.error_description ?? query.error;
-      if (this.redirectOAuthResult(res, { error: query.error, error_description: message })) {
+    if (query.denied || query.error) {
+      const message =
+        query.error_description ?? query.error ?? 'User denied authorization';
+      if (
+        this.redirectOAuthResult(res, {
+          error: query.error ?? 'access_denied',
+          error_description: message,
+        })
+      ) {
         return;
       }
       throw new BadRequestException(message);
     }
 
-    if (!query.code || !query.state) {
-      if (this.redirectOAuthResult(res, { error: 'invalid_request', error_description: 'Missing code or state' })) {
+    if (!query.oauth_token || !query.oauth_verifier) {
+      if (
+        this.redirectOAuthResult(res, {
+          error: 'invalid_request',
+          error_description: 'Missing oauth_token or oauth_verifier',
+        })
+      ) {
         return;
       }
-      throw new BadRequestException('Missing code or state');
+      throw new BadRequestException('Missing oauth_token or oauth_verifier');
     }
 
-    const statePayload = await this.stateStore.consume(query.state);
+    const statePayload = await this.stateStore.consume(query.oauth_token);
     if (!statePayload) {
-      if (this.redirectOAuthResult(res, { error: 'invalid_state', error_description: 'Invalid or expired OAuth state' })) {
+      if (
+        this.redirectOAuthResult(res, {
+          error: 'invalid_state',
+          error_description: 'Invalid or expired OAuth state',
+        })
+      ) {
         return;
       }
       throw new BadRequestException('Invalid or expired OAuth state');
@@ -90,35 +98,25 @@ export class OAuthService {
       statePayload.inviteToken,
     );
 
-    const tokens = await this.xApi.exchangeCodeForTokens(
-      query.code,
-      statePayload.codeVerifier,
+    const tokens = await this.xApi.exchangeVerifierForTokens(
+      query.oauth_token,
+      statePayload.oauthTokenSecret,
+      query.oauth_verifier,
     );
-    const xUser = await this.xApi.fetchCurrentUser(tokens.access_token);
-
-    const tokenExpiresAt =
-      tokens.expires_in !== undefined
-        ? new Date(Date.now() + tokens.expires_in * 1000)
-        : undefined;
-
-    const scopes = tokens.scope?.split(' ').filter(Boolean) ?? [];
 
     const connection = await this.connectionModel.findOneAndUpdate(
-      { orgId: invite.orgId, xUserId: xUser.id },
+      { orgId: invite.orgId, xUserId: tokens.userId },
       {
         $set: {
           orgId: invite.orgId,
-          xUserId: xUser.id,
-          xUsername: xUser.username,
-          scopes,
-          accessTokenEnc: this.tokenCrypto.encrypt(tokens.access_token),
-          refreshTokenEnc: tokens.refresh_token
-            ? this.tokenCrypto.encrypt(tokens.refresh_token)
-            : undefined,
-          tokenExpiresAt,
+          xUserId: tokens.userId,
+          xUsername: tokens.screenName,
+          scopes: [],
+          accessTokenEnc: this.tokenCrypto.encrypt(tokens.accessToken),
+          accessTokenSecretEnc: this.tokenCrypto.encrypt(tokens.accessTokenSecret),
           connectedAt: new Date(),
         },
-        $unset: { revokedAt: 1 },
+        $unset: { revokedAt: 1, refreshTokenEnc: 1, tokenExpiresAt: 1 },
       },
       { upsert: true, returnDocument: 'after' },
     );
@@ -129,15 +127,16 @@ export class OAuthService {
 
     const subscription = await this.webhooksService.subscribeForConnection(
       connection,
-      tokens.access_token,
+      tokens.accessToken,
+      tokens.accessTokenSecret,
     );
 
     await this.invitesService.incrementUseCount(invite._id);
 
     const result = {
       orgId: invite.orgId.toString(),
-      xUserId: xUser.id,
-      xUsername: xUser.username,
+      xUserId: tokens.userId,
+      xUsername: tokens.screenName,
       webhookUrl: subscription.webhookUrl,
       subscribed: subscription.subscribed,
     };

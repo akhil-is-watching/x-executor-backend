@@ -35,13 +35,22 @@ export class XWebhooksApiService {
 
   /**
    * Subscribe a user to Account Activity events.
-   * X requires OAuth 2.0 User Context for POST subscriptions/all.
+   * X requires OAuth 1.0a (3-legged) for POST subscriptions/all.
    */
   async subscribeUser(
     xWebhookConfigId: string,
-    userAccessToken: string,
+    accessToken: string,
+    accessTokenSecret: string,
   ): Promise<void> {
-    const userClient = new TwitterApi(userAccessToken);
+    const appKey = this.config.getOrThrow<string>('X_API_KEY');
+    const appSecret = this.config.getOrThrow<string>('X_API_KEY_SECRET');
+    const userClient = new TwitterApi({
+      appKey,
+      appSecret,
+      accessToken,
+      accessSecret: accessTokenSecret,
+    });
+
     try {
       await userClient.v2.post(
         `account_activity/webhooks/${xWebhookConfigId}/subscriptions/all`,
@@ -55,7 +64,7 @@ export class XWebhooksApiService {
         throw new Error(
           `X account activity subscription failed (403 Forbidden). ` +
             `Check that your X app has "Account Activity API" product access in the Developer Portal ` +
-            `(Products → Account Activity API). data: ${JSON.stringify(xData ?? '')}`,
+            `(https://docs.x.com/x-api/account-activity/quickstart). data: ${JSON.stringify(xData ?? '')}`,
         );
       }
       throw new Error(
@@ -70,7 +79,6 @@ export class XWebhooksApiService {
    */
   async unsubscribeUser(
     xWebhookConfigId: string,
-    _userAccessToken: string,
     xUserId: string,
   ): Promise<void> {
     const appClient = await this.getAppOnlyClient();

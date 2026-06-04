@@ -74,7 +74,11 @@ describe('WebhooksService', () => {
       accessTokenEnc: 'enc',
     } as never;
 
-    const result = await service.subscribeForConnection(connection, 'token');
+    const result = await service.subscribeForConnection(
+      connection,
+      'token',
+      'token-secret',
+    );
 
     expect(result.webhookUrl).toBe(
       'http://localhost:3001/api/v1/webhooks/incoming',

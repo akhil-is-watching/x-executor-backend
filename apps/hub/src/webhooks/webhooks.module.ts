@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WebhooksService } from './webhooks.service';
+import { XWebhooksApiService } from './x-webhooks-api.service';
 import {
   ConnectionWebhook,
   ConnectionWebhookSchema,
@@ -14,7 +15,7 @@ import { CryptoModule } from '../crypto/crypto.module';
       { name: ConnectionWebhook.name, schema: ConnectionWebhookSchema },
     ]),
   ],
-  providers: [WebhooksService],
-  exports: [WebhooksService],
+  providers: [XWebhooksApiService, WebhooksService],
+  exports: [WebhooksService, XWebhooksApiService],
 })
 export class WebhooksModule {}

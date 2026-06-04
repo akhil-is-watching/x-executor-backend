@@ -63,6 +63,7 @@ describe('Hub (e2e)', () => {
     process.env.X_REDIRECT_URI =
       'http://localhost:3000/api/v1/oauth/x/callback';
     process.env.X_OAUTH_SCOPES = 'tweet.read users.read';
+    process.env.X_REGISTER_WEBHOOKS_WITH_X = 'false';
 
     HubModule = require('../src/hub.module').HubModule;
 
@@ -134,11 +135,10 @@ describe('Hub (e2e)', () => {
       .query({ code: 'auth-code', state: stateId })
       .expect(200);
 
-    expect(callback.body.webhookId).toBeDefined();
     expect(callback.body.webhookUrl).toBe(
-      `http://localhost:3001/api/v1/webhooks/incoming/${callback.body.webhookId}`,
+      'http://localhost:3001/api/v1/webhooks/incoming',
     );
-    expect(callback.body.webhookSecret).toBeUndefined();
+    expect(callback.body.subscribed).toBe(false);
 
     const connections = await request(app.getHttpServer())
       .get(`/api/v1/orgs/${orgId}/connections`)
@@ -148,7 +148,7 @@ describe('Hub (e2e)', () => {
     expect(connections.body).toHaveLength(1);
     expect(connections.body[0].xUsername).toBe('testuser');
     expect(connections.body[0].xUserId).toBe('x-user-1');
-    expect(connections.body[0].webhookId).toBeDefined();
     expect(connections.body[0].webhookUrl).toBe(callback.body.webhookUrl);
+    expect(connections.body[0].subscribed).toBe(false);
   });
 });

@@ -13,8 +13,7 @@ describe('WebhookController', () => {
         {
           provide: IncomingService,
           useValue: {
-            assertActiveWebhook: jest.fn(),
-            processXWebhook: jest.fn(),
+            processIncomingPayload: jest.fn(),
           },
         },
         {

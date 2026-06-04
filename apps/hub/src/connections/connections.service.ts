@@ -36,8 +36,8 @@ export class ConnectionsService {
         scopes: c.scopes,
         connectedAt: c.connectedAt,
         tokenExpiresAt: c.tokenExpiresAt,
-        webhookId: webhook?.webhookId,
-        webhookUrl: webhook?.webhookUrl,
+        webhookUrl: webhook?.webhookUrl ?? this.webhooksService.getSharedWebhookUrl(),
+        subscribed: webhook?.subscribed ?? false,
         hasAuthToken: Boolean(c.authTokenEnc),
       };
     });
@@ -73,9 +73,9 @@ export class ConnectionsService {
       throw new NotFoundException('Connection not found');
     }
 
+    await this.webhooksService.revokeForConnection(connection);
     connection.revokedAt = new Date();
     await connection.save();
-    await this.webhooksService.revokeForConnection(connection._id);
     return { revoked: true };
   }
 }

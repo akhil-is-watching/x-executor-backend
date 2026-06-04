@@ -7,9 +7,9 @@ import { createHmac } from 'crypto';
 import { Types } from 'mongoose';
 import { NatsJsService } from '@app/nats-js';
 import type { XWebhookReceivedEvent } from '@app/shared';
-import { ConnectionWebhook } from '../src/schemas/connection-webhook.schema';
 import { XConnection } from '../src/schemas/x-connection.schema';
 import { createCrcResponse } from '../src/x-webhook.crypto';
+import { SHARED_WEBHOOK_ID } from '../src/incoming/incoming.service';
 
 function signWebhookBody(body: string, consumerSecret: string): string {
   const hash = createHmac('sha256', consumerSecret)
@@ -76,13 +76,11 @@ describe('Webhook (e2e)', () => {
       .expect({ status: 'ok' });
   });
 
-  it('handles CRC and signed X webhook events', async () => {
+  it('handles CRC and signed X webhook events on shared ingress URL', async () => {
     const orgId = new Types.ObjectId();
     const connectionId = new Types.ObjectId();
-    const webhookId = 'test-webhook-id';
 
     const connectionModel = app.get(getModelToken(XConnection.name));
-    const webhookModel = app.get(getModelToken(ConnectionWebhook.name));
 
     await connectionModel.create({
       _id: connectionId,
@@ -93,17 +91,8 @@ describe('Webhook (e2e)', () => {
       accessTokenEnc: 'enc',
     });
 
-    await webhookModel.create({
-      connectionId,
-      orgId,
-      webhookId,
-      secretEnc: 'enc',
-      webhookUrl: `http://localhost:3001/api/v1/webhooks/incoming/${webhookId}`,
-      active: true,
-    });
-
     const crc = await request(app.getHttpServer())
-      .get(`/api/v1/webhooks/incoming/${webhookId}`)
+      .get('/api/v1/webhooks/incoming')
       .query({ crc_token: 'crc-challenge' })
       .expect(200);
 
@@ -119,28 +108,28 @@ describe('Webhook (e2e)', () => {
     const signature = signWebhookBody(rawBody, process.env.X_CLIENT_SECRET!);
 
     const received = await request(app.getHttpServer())
-      .post(`/api/v1/webhooks/incoming/${webhookId}`)
+      .post('/api/v1/webhooks/incoming')
       .set('Content-Type', 'application/json')
       .set('x-twitter-webhooks-signature', signature)
       .send(rawBody)
       .expect(200);
 
     expect(received.body.received).toBe(true);
-    expect(received.body.eventId).toBeDefined();
+    expect(received.body.eventIds).toHaveLength(1);
     expect(publishedEvents).toHaveLength(1);
     expect(publishedEvents[0]).toMatchObject({
-      eventId: received.body.eventId,
+      eventId: received.body.eventIds[0],
       orgId: orgId.toString(),
       connectionId: connectionId.toString(),
       xUserId: 'x-user-1',
       xUsername: 'testuser',
-      webhookId,
+      webhookId: SHARED_WEBHOOK_ID,
       eventTypes: ['tweet_create_events'],
       payload,
     });
 
     await request(app.getHttpServer())
-      .post(`/api/v1/webhooks/incoming/${webhookId}`)
+      .post('/api/v1/webhooks/incoming')
       .set('Content-Type', 'application/json')
       .set('x-twitter-webhooks-signature', 'sha256=invalid')
       .send(rawBody)

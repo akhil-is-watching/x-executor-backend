@@ -11,14 +11,11 @@ export class ConnectionWebhook {
   @Prop({ type: Types.ObjectId, ref: 'Organization', required: true })
   orgId!: Types.ObjectId;
 
-  @Prop({ required: true, unique: true })
-  webhookId!: string;
-
   @Prop({ required: true })
-  secretEnc!: string;
+  xWebhookConfigId!: string;
 
-  @Prop({ required: true })
-  webhookUrl!: string;
+  @Prop({ default: () => new Date() })
+  subscribedAt!: Date;
 
   @Prop({ default: true })
   active!: boolean;

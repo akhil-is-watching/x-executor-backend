@@ -127,7 +127,10 @@ export class OAuthService {
       throw new InternalServerErrorException('Failed to save X connection');
     }
 
-    const webhook = await this.webhooksService.registerForConnection(connection);
+    const subscription = await this.webhooksService.subscribeForConnection(
+      connection,
+      tokens.access_token,
+    );
 
     await this.invitesService.incrementUseCount(invite._id);
 
@@ -135,8 +138,8 @@ export class OAuthService {
       orgId: invite.orgId.toString(),
       xUserId: xUser.id,
       xUsername: xUser.username,
-      webhookId: webhook.webhookId,
-      webhookUrl: webhook.webhookUrl,
+      webhookUrl: subscription.webhookUrl,
+      subscribed: subscription.subscribed,
     };
 
     const successRedirect = this.config.get<string>('OAUTH_SUCCESS_REDIRECT_URL');
@@ -145,8 +148,8 @@ export class OAuthService {
       url.searchParams.set('orgId', result.orgId);
       url.searchParams.set('xUserId', result.xUserId);
       url.searchParams.set('xUsername', result.xUsername);
-      url.searchParams.set('webhookId', result.webhookId);
       url.searchParams.set('webhookUrl', result.webhookUrl);
+      url.searchParams.set('subscribed', String(result.subscribed));
       url.searchParams.set('invite', statePayload.inviteToken);
       res.redirect(url.toString());
       return;

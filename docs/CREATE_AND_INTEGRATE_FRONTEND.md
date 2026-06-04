@@ -81,7 +81,7 @@ HUB_PUBLIC_BASE_URL=http://localhost:3000
 OAUTH_SUCCESS_REDIRECT_URL=http://localhost:5173/oauth/success
 ```
 
-On OAuth success, Hub redirects with query params: `orgId`, `xUserId`, `xUsername`, `webhookId`, `webhookUrl`.
+On OAuth success, Hub redirects with query params: `orgId`, `xUserId`, `xUsername`, `webhookUrl`, `subscribed`.
 
 If `OAUTH_SUCCESS_REDIRECT_URL` is unset, `GET /api/v1/oauth/x/callback` returns JSON with the same fields (useful for API testing, awkward for browser UX).
 
@@ -248,7 +248,7 @@ Route example: `/oauth/success` — must match `OAUTH_SUCCESS_REDIRECT_URL`.
 
 Read query params and show confirmation:
 
-- `orgId`, `xUserId`, `xUsername`, `webhookId`, `webhookUrl`
+- `orgId`, `xUserId`, `xUsername`, `webhookUrl`, `subscribed`
 
 Do not expose webhook secrets in the UI; Hub does not return them on this redirect.
 
@@ -265,8 +265,8 @@ Do not expose webhook secrets in the UI; Hub does not return them on this redire
     "scopes": ["tweet.read", "..."],
     "connectedAt": "...",
     "tokenExpiresAt": "...",
-    "webhookId": "...",
-    "webhookUrl": "https://webhook.../api/v1/webhooks/incoming/...",
+    "webhookUrl": "https://webhook.../api/v1/webhooks/incoming",
+    "subscribed": true,
     "hasAuthToken": false
   }
 ]

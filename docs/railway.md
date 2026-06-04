@@ -54,6 +54,30 @@ Nest apps expose `GET /` → `{ "status": "ok" }` (`healthcheckPath = "/"`).
 
 NATS: set service variable `PORT=8222` so Railway hits `GET /healthz` on the HTTP monitor (see `docs/env/nats.env.example`). Client apps still use `NATS_URL` on port `4222`.
 
+## X webhooks (single shared URL)
+
+All connections use one ingress URL on the Webhook service:
+
+`https://<webhook-service>/api/v1/webhooks/incoming`
+
+On each X OAuth, Hub:
+
+1. Registers that URL with X once (`POST /2/webhooks`) — idempotent.
+2. Subscribes the user (`POST /2/account_activity/webhooks/:config_id/subscriptions/all`).
+3. Stores a subscription row in MongoDB (`connection_webhooks`).
+
+The Webhook app routes events by `for_user_id` in the payload (fans out if the same X user is linked to multiple orgs).
+
+**Hub env (defaults on):**
+
+- `X_REGISTER_WEBHOOKS_WITH_X` — set to `false` to skip X API calls (local dev without AAAPI).
+- `X_WEBHOOK_CONFIG_ID` — optional; skip `POST /2/webhooks` if you already know the config id.
+- `X_OAUTH_SCOPES` — include `dm.read` / `dm.write` for DM events.
+- `WEBHOOK_PUBLIC_BASE_URL` — public HTTPS Webhook service (CRC + POST target).
+- `X_CLIENT_SECRET` — same on Hub and Webhook (CRC/signature).
+
+Requires **Account Activity API** access on your X app. After deploy, re-connect X accounts; delete old per-user webhook configs in the Developer Console if any remain.
+
 ## Redis auth
 
 Managed Redis (including Railway’s Redis plugin) returns `NOAUTH Authentication required` when the app connects without a password.

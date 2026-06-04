@@ -4,7 +4,6 @@ import {
   Get,
   Headers,
   HttpCode,
-  Param,
   Post,
   Query,
   Req,
@@ -27,25 +26,19 @@ export class WebhookController {
     return { status: 'ok' };
   }
 
-  @Get('webhooks/incoming/:webhookId')
-  async handleCrc(
-    @Param('webhookId') webhookId: string,
-    @Query('crc_token') crcToken: string | undefined,
-  ) {
+  @Get('webhooks/incoming')
+  handleCrc(@Query('crc_token') crcToken: string | undefined) {
     if (!crcToken) {
       throw new BadRequestException('Missing crc_token query parameter');
     }
-
-    await this.incomingService.assertActiveWebhook(webhookId);
 
     const consumerSecret = this.config.getOrThrow<string>('X_CLIENT_SECRET');
     return createCrcResponse(crcToken, consumerSecret);
   }
 
-  @Post('webhooks/incoming/:webhookId')
+  @Post('webhooks/incoming')
   @HttpCode(200)
   async receive(
-    @Param('webhookId') webhookId: string,
     @Headers('x-twitter-webhooks-signature') signature: string | undefined,
     @Req() req: RawBodyRequest<Request>,
   ) {
@@ -64,11 +57,12 @@ export class WebhookController {
       throw new BadRequestException('Invalid JSON body');
     }
 
-    const result = await this.incomingService.processXWebhook(
-      webhookId,
-      parsed,
-    );
+    const result = await this.incomingService.processIncomingPayload(parsed);
 
-    return { received: true, eventId: result.eventId };
+    return {
+      received: true,
+      eventIds: result.eventIds,
+      count: result.eventIds.length,
+    };
   }
 }

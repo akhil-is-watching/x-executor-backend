@@ -5,10 +5,6 @@ import { NatsJsModule } from '@app/nats-js';
 import { validateEnv } from './config/validate-env';
 import { IncomingService } from './incoming/incoming.service';
 import {
-  ConnectionWebhook,
-  ConnectionWebhookSchema,
-} from './schemas/connection-webhook.schema';
-import {
   XConnection,
   XConnectionSchema,
 } from './schemas/x-connection.schema';
@@ -28,7 +24,6 @@ import { WebhookController } from './webhook.controller';
     }),
     NatsJsModule,
     MongooseModule.forFeature([
-      { name: ConnectionWebhook.name, schema: ConnectionWebhookSchema },
       { name: XConnection.name, schema: XConnectionSchema },
     ]),
   ],

@@ -87,6 +87,8 @@ export class InvitesService {
       expired: this.isExpired(invite),
       revoked: Boolean(invite.revokedAt),
       maxUsesReached: this.isMaxUsesReached(invite),
+      useCount: invite.useCount,
+      maxUses: invite.maxUses ?? null,
     };
   }
 

@@ -61,17 +61,25 @@ export class OAuthService {
     res: Response,
   ): Promise<void> {
     if (query.error) {
-      throw new BadRequestException(
-        query.error_description ?? query.error,
-      );
+      const message = query.error_description ?? query.error;
+      if (this.redirectOAuthResult(res, { error: query.error, error_description: message })) {
+        return;
+      }
+      throw new BadRequestException(message);
     }
 
     if (!query.code || !query.state) {
+      if (this.redirectOAuthResult(res, { error: 'invalid_request', error_description: 'Missing code or state' })) {
+        return;
+      }
       throw new BadRequestException('Missing code or state');
     }
 
     const statePayload = await this.stateStore.consume(query.state);
     if (!statePayload) {
+      if (this.redirectOAuthResult(res, { error: 'invalid_state', error_description: 'Invalid or expired OAuth state' })) {
+        return;
+      }
       throw new BadRequestException('Invalid or expired OAuth state');
     }
 
@@ -136,10 +144,30 @@ export class OAuthService {
       url.searchParams.set('xUsername', result.xUsername);
       url.searchParams.set('webhookId', result.webhookId);
       url.searchParams.set('webhookUrl', result.webhookUrl);
+      url.searchParams.set('invite', statePayload.inviteToken);
       res.redirect(url.toString());
       return;
     }
 
     res.json(result);
+  }
+
+  /** Sends the browser to the frontend success page when OAUTH_SUCCESS_REDIRECT_URL is set. */
+  private redirectOAuthResult(
+    res: Response,
+    params: Record<string, string | undefined>,
+  ): boolean {
+    const successRedirect = this.config.get<string>('OAUTH_SUCCESS_REDIRECT_URL');
+    if (!successRedirect) {
+      return false;
+    }
+    const url = new URL(successRedirect);
+    for (const [key, value] of Object.entries(params)) {
+      if (value) {
+        url.searchParams.set(key, value);
+      }
+    }
+    res.redirect(url.toString());
+    return true;
   }
 }

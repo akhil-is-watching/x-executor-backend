@@ -1,15 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-
-interface XWebhookConfig {
-  id: string;
-  url: string;
-  valid?: boolean;
-}
-
-interface XWebhooksListResponse {
-  data?: XWebhookConfig[];
-}
+import { TwitterApi } from 'twitter-api-v2';
 
 @Injectable()
 export class XWebhooksApiService {
@@ -36,8 +27,8 @@ export class XWebhooksApiService {
     }
 
     const webhookUrl = this.getSharedWebhookUrl();
-    const appBearer = await this.getAppBearerToken();
-    const config = await this.ensureWebhookConfig(webhookUrl, appBearer);
+    const appClient = await this.getAppOnlyClient();
+    const config = await this.ensureWebhookConfig(webhookUrl, appClient);
     this.logger.log(`X app webhook config ${config.id} for ${webhookUrl}`);
     return config.id;
   }
@@ -46,24 +37,11 @@ export class XWebhooksApiService {
     xWebhookConfigId: string,
     userAccessToken: string,
   ): Promise<void> {
-    const response = await fetch(
-      `https://api.twitter.com/2/account_activity/webhooks/${encodeURIComponent(xWebhookConfigId)}/subscriptions/all`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${userAccessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: '{}',
-      },
+    const userClient = new TwitterApi(userAccessToken);
+    await userClient.v2.post(
+      `account_activity/webhooks/${xWebhookConfigId}/subscriptions/all`,
+      {},
     );
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(
-        `X account activity subscription failed (${response.status}): ${body}`,
-      );
-    }
   }
 
   async unsubscribeUser(
@@ -71,92 +49,59 @@ export class XWebhooksApiService {
     userAccessToken: string,
     xUserId: string,
   ): Promise<void> {
-    const response = await fetch(
-      `https://api.twitter.com/2/account_activity/webhooks/${encodeURIComponent(xWebhookConfigId)}/subscriptions/${encodeURIComponent(xUserId)}/all`,
-      {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${userAccessToken}`,
-        },
-      },
-    );
-
-    if (!response.ok && response.status !== 404) {
-      const body = await response.text();
-      throw new Error(
-        `X account activity unsubscribe failed (${response.status}): ${body}`,
+    const userClient = new TwitterApi(userAccessToken);
+    try {
+      await userClient.v2.delete(
+        `account_activity/webhooks/${xWebhookConfigId}/subscriptions/${xUserId}/all`,
       );
+    } catch (err: unknown) {
+      const status = (err as { code?: number })?.code;
+      if (status !== 404) {
+        throw err;
+      }
     }
   }
 
-  private async getAppBearerToken(): Promise<string> {
-    const clientId = this.config.getOrThrow<string>('X_CLIENT_ID');
-    const clientSecret = this.config.getOrThrow<string>('X_CLIENT_SECRET');
-    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
-    const response = await fetch('https://api.twitter.com/oauth2/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${basic}`,
-      },
-      body: 'grant_type=client_credentials',
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`X app bearer token failed (${response.status}): ${body}`);
-    }
-
-    const json = (await response.json()) as { access_token: string };
-    return json.access_token;
+  private async getAppOnlyClient(): Promise<TwitterApi> {
+    const appKey = this.config.getOrThrow<string>('X_CLIENT_ID');
+    const appSecret = this.config.getOrThrow<string>('X_CLIENT_SECRET');
+    const userClient = new TwitterApi({ appKey, appSecret });
+    return userClient.appLogin();
   }
 
   private async ensureWebhookConfig(
     webhookUrl: string,
-    appBearer: string,
-  ): Promise<XWebhookConfig> {
-    const existing = await this.findWebhookConfigByUrl(webhookUrl, appBearer);
+    appClient: TwitterApi,
+  ): Promise<{ id: string; url: string }> {
+    const existing = await this.findWebhookConfigByUrl(webhookUrl, appClient);
     if (existing) {
       return existing;
     }
 
-    const response = await fetch('https://api.twitter.com/2/webhooks', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${appBearer}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url: webhookUrl }),
-    });
+    const res = await appClient.v2.post<{ data?: { id: string; url: string } }>(
+      'webhooks',
+      { url: webhookUrl },
+    );
 
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`X register webhook failed (${response.status}): ${body}`);
-    }
-
-    const json = (await response.json()) as { data?: XWebhookConfig };
-    if (!json.data?.id) {
+    if (!res.data?.id) {
       throw new Error('X register webhook returned no config id');
     }
-    return json.data;
+    return res.data;
   }
 
   private async findWebhookConfigByUrl(
     webhookUrl: string,
-    appBearer: string,
-  ): Promise<XWebhookConfig | null> {
-    const response = await fetch('https://api.twitter.com/2/webhooks', {
-      headers: { Authorization: `Bearer ${appBearer}` },
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      this.logger.warn(`X list webhooks failed (${response.status}): ${body}`);
+    appClient: TwitterApi,
+  ): Promise<{ id: string; url: string } | null> {
+    try {
+      const res = await appClient.v2.get<{
+        data?: { id: string; url: string }[];
+      }>('webhooks');
+      return res.data?.find((w) => w.url === webhookUrl) ?? null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`X list webhooks failed: ${message}`);
       return null;
     }
-
-    const json = (await response.json()) as XWebhooksListResponse;
-    return json.data?.find((w) => w.url === webhookUrl) ?? null;
   }
 }

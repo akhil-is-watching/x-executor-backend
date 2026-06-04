@@ -51,7 +51,17 @@ export class DmPipelineService {
 
     const dmContext = parseInboundDmFromWebhook(event.payload, event.xUserId);
     if (!dmContext) {
+      this.logger.warn(
+        `No parseable DM in webhook payload eventId=${event.eventId}`,
+      );
       return;
+    }
+
+    const webhookInboundText = dmContext.inboundTextFromWebhook?.trim();
+    if (webhookInboundText) {
+      this.logger.log(
+        `DM event message eventId=${event.eventId} from=${dmContext.recipientId}: ${JSON.stringify(webhookInboundText)}`,
+      );
     }
 
     const connection = await this.connectionModel.findOne({
@@ -102,6 +112,10 @@ export class DmPipelineService {
       return;
     }
 
+    this.logger.log(
+      `DM inbound text eventId=${event.eventId} conversation=${dmContext.conversationId}: ${JSON.stringify(inboundText)}`,
+    );
+
     const unknownReply =
       org.unknownReply?.trim() ||
       this.config.get<string>('DEFAULT_UNKNOWN_REPLY') ||
@@ -112,6 +126,10 @@ export class DmPipelineService {
       unknownReply,
       userMessage: inboundText,
     });
+
+    this.logger.log(
+      `DM generated reply eventId=${event.eventId} known=${llmResult.isKnownAnswer}: ${JSON.stringify(llmResult.replyText)}`,
+    );
 
     const replyEvent: XDmReplyReadyEvent = {
       eventId: randomUUID(),
@@ -130,5 +148,9 @@ export class DmPipelineService {
     };
 
     await this.natsJs.publishJson(NATS_SUBJECT_DM_REPLY_READY, replyEvent);
+    this.logger.log(
+      `Published ${NATS_SUBJECT_DM_REPLY_READY} replyEventId=${replyEvent.eventId} ` +
+        `sourceEventId=${event.eventId}`,
+    );
   }
 }

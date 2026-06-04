@@ -5,6 +5,7 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "webpack": true,
+    "webpackConfigPath": "webpack.config.js",
     "tsConfigPath": "apps/x-executor/tsconfig.app.json"
   },
   "monorepo": true,
@@ -16,7 +17,9 @@
       "entryFile": "main",
       "sourceRoot": "apps/hub/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/hub/tsconfig.app.json"
+        "tsConfigPath": "apps/hub/tsconfig.app.json",
+        "webpack": true,
+        "webpackConfigPath": "webpack.config.js"
       }
     },
     "getxapi": {
@@ -52,7 +55,9 @@
       "entryFile": "main",
       "sourceRoot": "apps/processor/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/processor/tsconfig.app.json"
+        "tsConfigPath": "apps/processor/tsconfig.app.json",
+        "webpack": true,
+        "webpackConfigPath": "webpack.config.js"
       }
     },
     "redis": {
@@ -88,7 +93,9 @@
       "entryFile": "main",
       "sourceRoot": "apps/webhook/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/webhook/tsconfig.app.json"
+        "tsConfigPath": "apps/webhook/tsconfig.app.json",
+        "webpack": true,
+        "webpackConfigPath": "webpack.config.js"
       }
     },
     "x-executor": {

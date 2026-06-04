@@ -25,7 +25,7 @@ For local development, the root `.env.example` still lists all variables in one 
 
 2. **Add data stores** (Railway plugins or external):
    - MongoDB → `MONGODB_URI`
-   - Redis → `REDIS_URL` (hub + processor)
+   - Redis → `REDIS_URL` on **Hub** and **Processor** (see [Redis auth](#redis-auth) below)
    - NATS → deploy with `docs/railway/nats-js/railway.toml` (see below)
 
 3. **Create four services** (NATS, Hub, Webhook, Processor). For each:
@@ -53,6 +53,30 @@ For local development, the root `.env.example` still lists all variables in one 
 Nest apps expose `GET /` → `{ "status": "ok" }` (`healthcheckPath = "/"`).
 
 NATS: set service variable `PORT=8222` so Railway hits `GET /healthz` on the HTTP monitor (see `docs/env/nats.env.example`). Client apps still use `NATS_URL` on port `4222`.
+
+## Redis auth
+
+Managed Redis (including Railway’s Redis plugin) returns `NOAUTH Authentication required` when the app connects without a password.
+
+**Do this:** On Hub and Processor, set:
+
+```bash
+REDIS_URL=${{Redis.REDIS_URL}}
+```
+
+Use the **reference variable** from your Redis service name (`Redis` must match the service name in Railway). That URL already includes `default:<password>@host:port`.
+
+**Do not** build the URL by hand, e.g. `redis://${{Redis.RAILWAY_PRIVATE_DOMAIN}}:6379` — that omits the password and causes `NOAUTH`.
+
+If you must use a host-only URL, also set `REDIS_PASSWORD=${{Redis.REDIS_PASSWORD}}` (and optionally `REDIS_USERNAME=default`). The shared Redis client will inject credentials automatically.
+
+## Slow Nest builds on Railway
+
+Hub, Webhook, and Processor use webpack via `nest build`. The default Nest webpack setup runs `ForkTsCheckerWebpackPlugin`, which can take many minutes or appear stuck on small Railway builders.
+
+This repo uses root `webpack.config.js` to compile with `transpileOnly` and skip fork-ts-checker during deploy builds. Type-check locally with `yarn test` / your IDE.
+
+If a deploy log shows ~5 minutes before `nest build`, most of that is usually `yarn install`, not compilation.
 
 ## Local parity
 

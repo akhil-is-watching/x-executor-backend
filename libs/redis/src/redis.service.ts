@@ -1,20 +1,40 @@
 import {
   Injectable,
+  Logger,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import { resolveRedisUrl } from './redis-connection.util';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(RedisService.name);
   private client!: Redis;
 
   constructor(private readonly config: ConfigService) {}
 
-  onModuleInit(): void {
-    const url = this.config.getOrThrow<string>('REDIS_URL');
+  async onModuleInit(): Promise<void> {
+    const url = resolveRedisUrl(
+      this.config.getOrThrow<string>('REDIS_URL'),
+      this.config.get<string>('REDIS_PASSWORD'),
+      this.config.get<string>('REDIS_USERNAME'),
+    );
     this.client = new Redis(url, { maxRetriesPerRequest: 3 });
+    this.client.on('error', (err) => {
+      this.logger.error(`Redis client error: ${err.message}`);
+    });
+    try {
+      await this.client.ping();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Redis ping failed (${message}). Use the full REDIS_URL from your Redis provider ` +
+          '(e.g. Railway: REDIS_URL=${{Redis.REDIS_URL}}). Host-only URLs require REDIS_PASSWORD.',
+      );
+      throw err;
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

@@ -10,6 +10,7 @@ watchPatterns = [
   "yarn.lock",
   "nest-cli.json",
   "tsconfig*.json",
+  "webpack.config.js",
 ]
 
 [deploy]

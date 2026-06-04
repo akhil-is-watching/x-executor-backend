@@ -1,8 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
+import OpenAI from 'openai';
 import { LlmService } from './llm.service';
 
 const createMock = jest.fn();
+const OpenAIMock = OpenAI as jest.MockedClass<typeof OpenAI>;
 
 jest.mock('openai', () => ({
   __esModule: true,
@@ -20,6 +22,7 @@ describe('LlmService', () => {
 
   beforeEach(async () => {
     createMock.mockReset();
+    OpenAIMock.mockClear();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -41,6 +44,37 @@ describe('LlmService', () => {
     }).compile();
 
     service = module.get(LlmService);
+  });
+
+  it('passes OPENAI_BASE_URL to the OpenAI client when set', async () => {
+    OpenAIMock.mockClear();
+
+    await Test.createTestingModule({
+      providers: [
+        LlmService,
+        {
+          provide: ConfigService,
+          useValue: {
+            getOrThrow: (name: string) => {
+              if (name === 'OPENAI_API_KEY') return 'test-key';
+              throw new Error(name);
+            },
+            get: (name: string) => {
+              if (name === 'OPENAI_BASE_URL') {
+                return 'https://proxy.example/v1';
+              }
+              if (name === 'OPENAI_MODEL') return 'gpt-4o-mini';
+              return undefined;
+            },
+          },
+        },
+      ],
+    }).compile();
+
+    expect(OpenAIMock).toHaveBeenCalledWith({
+      apiKey: 'test-key',
+      baseURL: 'https://proxy.example/v1',
+    });
   });
 
   it('returns known answer when model responds normally', async () => {

@@ -19,8 +19,10 @@ export class LlmService {
   private readonly model: string;
 
   constructor(private readonly config: ConfigService) {
+    const baseURL = this.config.get<string>('OPENAI_BASE_URL');
     this.client = new OpenAI({
       apiKey: this.config.getOrThrow<string>('OPENAI_API_KEY'),
+      ...(baseURL ? { baseURL } : {}),
     });
     this.model = this.config.get<string>('OPENAI_MODEL') ?? 'gpt-4o-mini';
   }

@@ -74,7 +74,9 @@ The Webhook app routes events by `for_user_id` in the payload (fans out if the s
 - `X_WEBHOOK_CONFIG_ID` — optional; skip `POST /2/webhooks` if you already know the config id.
 - `X_OAUTH_SCOPES` — include `dm.read` / `dm.write` for DM events.
 - `WEBHOOK_PUBLIC_BASE_URL` — public HTTPS Webhook service (CRC + POST target).
-- `X_CLIENT_SECRET` — same on Hub and Webhook (CRC/signature).
+- **Webhook service CRC:** set `X_CONSUMER_SECRET` to the **API Key Secret** (Consumer Keys in Developer Portal). If unset, `X_CLIENT_SECRET` is used. Hub OAuth can keep `X_CLIENT_SECRET`; they are only the same when your portal shows one secret.
+
+**CRC error `Invalid response_token`:** almost always wrong secret or wrong URL path. Register exactly `https://<webhook-host>/api/v1/webhooks/incoming` (no trailing slash). On the **Webhook** Railway service, set `X_CONSUMER_SECRET` to the API Key Secret, redeploy, then re-validate in X console.
 
 Requires **Account Activity API** access on your X app. After deploy, re-connect X accounts; delete old per-user webhook configs in the Developer Console if any remain.
 

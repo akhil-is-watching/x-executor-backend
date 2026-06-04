@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { NatsJsModule } from '@app/nats-js';
+import { ConsumerSecretConfig } from './config/consumer-secret.config';
 import { validateEnv } from './config/validate-env';
 import { IncomingService } from './incoming/incoming.service';
 import {
@@ -28,6 +29,6 @@ import { WebhookController } from './webhook.controller';
     ]),
   ],
   controllers: [WebhookController],
-  providers: [IncomingService],
+  providers: [IncomingService, ConsumerSecretConfig],
 })
 export class WebhookModule {}

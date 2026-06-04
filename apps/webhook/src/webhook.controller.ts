@@ -11,6 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
+import { getXConsumerSecret } from './config/consumer-secret.util';
 import { IncomingService } from './incoming/incoming.service';
 import { createCrcResponse, verifyWebhookSignature } from './x-webhook.crypto';
 
@@ -26,13 +27,13 @@ export class WebhookController {
     return { status: 'ok' };
   }
 
-  @Get('webhooks/incoming')
+  @Get(['webhooks/incoming', 'webhooks/incoming/'])
   handleCrc(@Query('crc_token') crcToken: string | undefined) {
     if (!crcToken) {
       throw new BadRequestException('Missing crc_token query parameter');
     }
 
-    const consumerSecret = this.config.getOrThrow<string>('X_CLIENT_SECRET');
+    const consumerSecret = getXConsumerSecret(this.config);
     return createCrcResponse(crcToken, consumerSecret);
   }
 
@@ -47,7 +48,7 @@ export class WebhookController {
       throw new BadRequestException('Missing raw request body');
     }
 
-    const consumerSecret = this.config.getOrThrow<string>('X_CLIENT_SECRET');
+    const consumerSecret = getXConsumerSecret(this.config);
     verifyWebhookSignature(rawBody, signature, consumerSecret);
 
     let parsed: Record<string, unknown>;

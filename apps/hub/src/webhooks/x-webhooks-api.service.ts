@@ -94,13 +94,19 @@ export class XWebhooksApiService {
     const clientSecret = this.config.getOrThrow<string>('X_CLIENT_SECRET');
     const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+    });
+
     const response = await fetch('https://api.twitter.com/2/oauth2/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         Authorization: `Basic ${basic}`,
       },
-      body: 'grant_type=client_credentials',
+      body: body.toString(),
     });
 
     if (!response.ok) {

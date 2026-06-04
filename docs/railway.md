@@ -70,7 +70,26 @@ The Webhook app routes events by `for_user_id` in the payload (fans out if the s
 
 **Webhook must use the same `MONGODB_URI` as Hub** so `x_connections` rows exist for routing.
 
-**No POSTs in Webhook logs?** X may not be delivering yet — favorite a tweet on the subscribed account to test ([quickstart](https://docs.x.com/x-api/account-activity/quickstart)). If you see `signature verification failed`, fix `X_CONSUMER_SECRET` on Webhook (= API Key Secret). If you see `No active connection for for_user_id=...`, re-OAuth so Hub stores the v2 user id that matches `for_user_id`.
+**No POSTs in Webhook logs?** Your URL is reachable if `GET /` and CRC work; silence means **X is not sending events** (not a Nest bug). Checklist:
+
+1. In Developer Portal → **Webhooks**, confirm config `2062592785111478272` (or latest Hub log id) shows **Valid** — invalid webhooks receive no events ([docs](https://docs.x.com/x-api/webhooks/introduction)).
+2. Re-OAuth after deploy (Hub logs `valid=true` and may trigger `PUT /2/webhooks/:id` CRC if invalid).
+3. Test with a **favorite** on the subscribed account’s tweet ([quickstart](https://docs.x.com/x-api/account-activity/quickstart)), wait ~10s; watch Webhook for `HTTP POST /api/v1/webhooks/incoming`.
+4. **DMs:** some conversations use XChat encryption — X API sends **no webhook** for those ([known limitation](https://github.com/aws-samples/sample-amazon-connect-social-integration/blob/main/x_setup.md)).
+5. Prove logging: signed POST test (replace `YOUR_API_KEY_SECRET`):
+
+```bash
+BODY='{"for_user_id":"1390625949587173378","tweet_create_events":[]}'
+SIG=$(node -e "const c=require('crypto');const b=process.argv[1];const s=process.argv[2];console.log('sha256='+c.createHmac('sha256',s).update(b).digest('base64'))" "$BODY" "YOUR_API_KEY_SECRET")
+curl -sS -X POST "https://webhook-x-executor.up.railway.app/api/v1/webhooks/incoming" \
+  -H "Content-Type: application/json" \
+  -H "x-twitter-webhooks-signature: $SIG" \
+  -d "$BODY"
+```
+
+You should see `HTTP POST` + `X webhook POST received` in Railway. If that works but real X events do not, the issue is X delivery (invalid webhook / wrong test / encrypted DM).
+
+If you see `signature verification failed`, fix `X_CONSUMER_SECRET` on Webhook (= API Key Secret). If you see `No active connection for for_user_id=...`, re-OAuth so Hub stores the v2 user id that matches `for_user_id`.
 
 **Hub env (defaults on):**
 

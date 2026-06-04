@@ -2,6 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TwitterApi } from 'twitter-api-v2';
 
+interface XWebhookConfig {
+  id: string;
+  url: string;
+  valid?: boolean;
+}
+
+interface XWebhookCrcResult {
+  data?: { attempted?: boolean };
+}
+
 @Injectable()
 export class XWebhooksApiService {
   private readonly logger = new Logger(XWebhooksApiService.name);
@@ -29,8 +39,36 @@ export class XWebhooksApiService {
     const webhookUrl = this.getSharedWebhookUrl();
     const appClient = await this.getAppOnlyClient();
     const config = await this.ensureWebhookConfig(webhookUrl, appClient);
-    this.logger.log(`X app webhook config ${config.id} for ${webhookUrl}`);
+    this.logger.log(
+      `X app webhook config ${config.id} for ${webhookUrl} (valid=${String(config.valid ?? 'unknown')})`,
+    );
+    if (config.valid === false) {
+      this.logger.warn(
+        `Webhook ${config.id} is invalid on X — triggering CRC re-validation`,
+      );
+      await this.triggerWebhookCrc(config.id, appClient);
+    }
     return config.id;
+  }
+
+  /** PUT /2/webhooks/:id — X sends CRC GET; webhook must pass to receive events. */
+  async triggerWebhookCrc(
+    xWebhookConfigId: string,
+    appClient?: TwitterApi,
+  ): Promise<void> {
+    const client = appClient ?? (await this.getAppOnlyClient());
+    try {
+      const res = await client.v2.put<XWebhookCrcResult>(
+        `webhooks/${xWebhookConfigId}`,
+      );
+      this.logger.log(
+        `X CRC re-validation for webhook ${xWebhookConfigId}: ${JSON.stringify(res.data ?? res)}`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`X CRC re-validation failed: ${message}`);
+      throw err;
+    }
   }
 
   /**
@@ -128,13 +166,13 @@ export class XWebhooksApiService {
   private async ensureWebhookConfig(
     webhookUrl: string,
     appClient: TwitterApi,
-  ): Promise<{ id: string; url: string }> {
+  ): Promise<XWebhookConfig> {
     const existing = await this.findWebhookConfigByUrl(webhookUrl, appClient);
     if (existing) {
       return existing;
     }
 
-    const res = await appClient.v2.post<{ data?: { id: string; url: string } }>(
+    const res = await appClient.v2.post<{ data?: XWebhookConfig }>(
       'webhooks',
       { url: webhookUrl },
     );
@@ -148,10 +186,10 @@ export class XWebhooksApiService {
   private async findWebhookConfigByUrl(
     webhookUrl: string,
     appClient: TwitterApi,
-  ): Promise<{ id: string; url: string } | null> {
+  ): Promise<XWebhookConfig | null> {
     try {
       const res = await appClient.v2.get<{
-        data?: { id: string; url: string }[];
+        data?: XWebhookConfig[];
       }>('webhooks');
       return res.data?.find((w) => w.url === webhookUrl) ?? null;
     } catch (err) {

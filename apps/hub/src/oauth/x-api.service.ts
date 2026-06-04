@@ -68,17 +68,31 @@ export class XApiService {
     }
   }
 
-  async fetchCurrentUser(accessToken: string): Promise<{ id: string; username: string }> {
-    const response = await fetch('https://api.twitter.com/2/users/me', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+  /** v2 user id matches Account Activity for_user_id (OAuth 1.0a login userId may differ). */
+  async fetchUserProfileOAuth1(
+    accessToken: string,
+    accessTokenSecret: string,
+  ): Promise<{ id: string; username: string }> {
+    const appKey = this.config.getOrThrow<string>('X_API_KEY');
+    const appSecret = this.config.getOrThrow<string>('X_API_KEY_SECRET');
+    const userClient = new TwitterApi({
+      appKey,
+      appSecret,
+      accessToken,
+      accessSecret: accessTokenSecret,
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new InternalServerErrorException(`X users/me failed: ${text}`);
+    try {
+      const me = await userClient.v2.me({
+        'user.fields': ['id', 'username'],
+      });
+      if (!me.data?.id || !me.data.username) {
+        throw new InternalServerErrorException('X users/me returned no profile');
+      }
+      return { id: me.data.id, username: me.data.username };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new InternalServerErrorException(`X users/me (OAuth 1.0a) failed: ${message}`);
     }
-
-    const json = (await response.json()) as { data: { id: string; username: string } };
-    return { id: json.data.id, username: json.data.username };
   }
 }

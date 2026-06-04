@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -24,6 +25,8 @@ export interface ProcessXWebhookResult {
 
 @Injectable()
 export class IncomingService {
+  private readonly logger = new Logger(IncomingService.name);
+
   constructor(
     @InjectModel(XConnection.name)
     private readonly connectionModel: Model<XConnectionDocument>,
@@ -44,6 +47,10 @@ export class IncomingService {
     });
 
     if (connections.length === 0) {
+      this.logger.warn(
+        `No active connection for for_user_id=${String(forUserId)} — ` +
+          `re-OAuth after deploy; Webhook MONGODB_URI must match Hub`,
+      );
       throw new NotFoundException(
         `No active connection for X user ${String(forUserId)}`,
       );

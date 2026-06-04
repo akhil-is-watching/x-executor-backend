@@ -4,9 +4,11 @@ import {
   Get,
   Headers,
   HttpCode,
+  Logger,
   Post,
   Query,
   Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -17,6 +19,8 @@ import { createCrcResponse, verifyWebhookSignature } from './x-webhook.crypto';
 
 @Controller()
 export class WebhookController {
+  private readonly logger = new Logger(WebhookController.name);
+
   constructor(
     private readonly incomingService: IncomingService,
     private readonly config: ConfigService,
@@ -44,12 +48,25 @@ export class WebhookController {
     @Req() req: RawBodyRequest<Request>,
   ) {
     const rawBody = req.rawBody;
+    this.logger.log(
+      `X webhook POST received (${rawBody && Buffer.isBuffer(rawBody) ? rawBody.length : 0} bytes, signature=${signature ? 'present' : 'missing'})`,
+    );
+
     if (!rawBody || !Buffer.isBuffer(rawBody)) {
       throw new BadRequestException('Missing raw request body');
     }
 
     const consumerSecret = getXConsumerSecret(this.config);
-    verifyWebhookSignature(rawBody, signature, consumerSecret);
+    try {
+      verifyWebhookSignature(rawBody, signature, consumerSecret);
+    } catch (err) {
+      if (err instanceof UnauthorizedException) {
+        this.logger.error(
+          'X webhook signature verification failed — check Webhook X_CONSUMER_SECRET matches OAuth 1.0 API Key Secret',
+        );
+      }
+      throw err;
+    }
 
     let parsed: Record<string, unknown>;
     try {
@@ -58,7 +75,16 @@ export class WebhookController {
       throw new BadRequestException('Invalid JSON body');
     }
 
+    const eventKeys = Object.keys(parsed).filter((k) => k !== 'for_user_id');
+    this.logger.log(
+      `X webhook payload for_user_id=${String(parsed.for_user_id ?? 'missing')} keys=[${eventKeys.join(', ')}]`,
+    );
+
     const result = await this.incomingService.processIncomingPayload(parsed);
+
+    this.logger.log(
+      `X webhook processed → ${result.eventIds.length} NATS event(s)`,
+    );
 
     return {
       received: true,

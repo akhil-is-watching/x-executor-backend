@@ -104,13 +104,18 @@ export class OAuthService {
       query.oauth_verifier,
     );
 
+    const profile = await this.xApi.fetchUserProfileOAuth1(
+      tokens.accessToken,
+      tokens.accessTokenSecret,
+    );
+
     const connection = await this.connectionModel.findOneAndUpdate(
-      { orgId: invite.orgId, xUserId: tokens.userId },
+      { orgId: invite.orgId, xUserId: profile.id },
       {
         $set: {
           orgId: invite.orgId,
-          xUserId: tokens.userId,
-          xUsername: tokens.screenName,
+          xUserId: profile.id,
+          xUsername: profile.username,
           scopes: [],
           accessTokenEnc: this.tokenCrypto.encrypt(tokens.accessToken),
           accessTokenSecretEnc: this.tokenCrypto.encrypt(tokens.accessTokenSecret),
@@ -135,8 +140,8 @@ export class OAuthService {
 
     const result = {
       orgId: invite.orgId.toString(),
-      xUserId: tokens.userId,
-      xUsername: tokens.screenName,
+      xUserId: profile.id,
+      xUsername: profile.username,
       webhookUrl: subscription.webhookUrl,
       subscribed: subscription.subscribed,
     };

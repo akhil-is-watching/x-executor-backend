@@ -68,6 +68,10 @@ On each X OAuth (OAuth 1.0a 3-legged), Hub:
 
 The Webhook app routes events by `for_user_id` in the payload (fans out if the same X user is linked to multiple orgs).
 
+**Webhook must use the same `MONGODB_URI` as Hub** so `x_connections` rows exist for routing.
+
+**No POSTs in Webhook logs?** X may not be delivering yet — favorite a tweet on the subscribed account to test ([quickstart](https://docs.x.com/x-api/account-activity/quickstart)). If you see `signature verification failed`, fix `X_CONSUMER_SECRET` on Webhook (= API Key Secret). If you see `No active connection for for_user_id=...`, re-OAuth so Hub stores the v2 user id that matches `for_user_id`.
+
 **Hub env (defaults on):**
 
 - `X_API_KEY` / `X_API_KEY_SECRET` — Consumer Keys (OAuth 1.0a user connect + app bearer).

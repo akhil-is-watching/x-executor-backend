@@ -43,7 +43,7 @@ describe('Hub (e2e)', () => {
       userId: 'x-user-1',
       screenName: 'testuser',
     })),
-    fetchCurrentUser: jest.fn(async () => ({
+    fetchUserProfileOAuth1: jest.fn(async () => ({
       id: 'x-user-1',
       username: 'testuser',
     })),

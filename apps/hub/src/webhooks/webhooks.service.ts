@@ -68,6 +68,11 @@ export class WebhooksService implements OnModuleInit {
           accessTokenSecret,
         );
         subscribed = true;
+        const userIds = await this.xWebhooksApi.listSubscriptions(xWebhookConfigId);
+        this.logger.log(
+          `@${connection.xUsername} subscribed to webhook ${xWebhookConfigId}; ` +
+            `X reports ${userIds.length} subscription(s): [${userIds.join(', ')}]`,
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.error(
@@ -76,7 +81,7 @@ export class WebhooksService implements OnModuleInit {
       }
     }
 
-    if (xWebhookConfigId) {
+    if (subscribed && xWebhookConfigId) {
       await this.webhookModel.create({
         connectionId: connection._id,
         orgId: connection.orgId,

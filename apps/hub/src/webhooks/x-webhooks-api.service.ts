@@ -52,9 +52,13 @@ export class XWebhooksApiService {
     });
 
     try {
-      await userClient.v2.post(
+      const res = await userClient.v2.post<{
+        data?: { subscribed?: boolean };
+      }>(
         `account_activity/webhooks/${xWebhookConfigId}/subscriptions/all`,
-        {},
+      );
+      this.logger.log(
+        `X subscription created for webhook ${xWebhookConfigId}: ${JSON.stringify(res.data ?? res)}`,
       );
     } catch (err: unknown) {
       const xData = (err as Record<string, unknown>)['data'];
@@ -70,6 +74,23 @@ export class XWebhooksApiService {
       throw new Error(
         `X account activity subscription failed: ${detail} | data: ${JSON.stringify(xData ?? '')}`,
       );
+    }
+  }
+
+  /** Lists user IDs subscribed to a webhook (app bearer). */
+  async listSubscriptions(xWebhookConfigId: string): Promise<string[]> {
+    const appClient = await this.getAppOnlyClient();
+    try {
+      const res = await appClient.v2.get<{
+        data?: { subscriptions?: { user_id: string }[] };
+      }>(
+        `account_activity/webhooks/${xWebhookConfigId}/subscriptions/all/list`,
+      );
+      return res.data?.subscriptions?.map((s) => s.user_id) ?? [];
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`X list subscriptions failed: ${message}`);
+      return [];
     }
   }
 

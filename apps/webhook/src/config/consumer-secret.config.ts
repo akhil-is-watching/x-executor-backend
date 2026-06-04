@@ -1,12 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { getXConsumerSecret } from './consumer-secret.util';
-
-function secretSource(config: ConfigService): string {
-  if (config.get<string>('X_CONSUMER_SECRET')?.trim()) return 'X_CONSUMER_SECRET';
-  if (config.get<string>('X_API_KEY_SECRET')?.trim()) return 'X_API_KEY_SECRET';
-  return 'X_CLIENT_SECRET';
-}
+import {
+  getXConsumerSecret,
+  getXConsumerSecretSource,
+  trimEnvSecret,
+} from './consumer-secret.util';
 
 @Injectable()
 export class ConsumerSecretConfig implements OnModuleInit {
@@ -16,21 +14,23 @@ export class ConsumerSecretConfig implements OnModuleInit {
 
   onModuleInit(): void {
     const candidates = [
-      ['X_CONSUMER_SECRET', this.config.get<string>('X_CONSUMER_SECRET')?.trim()],
       ['X_API_KEY_SECRET', this.config.get<string>('X_API_KEY_SECRET')?.trim()],
+      ['X_CONSUMER_SECRET', this.config.get<string>('X_CONSUMER_SECRET')?.trim()],
       ['X_CLIENT_SECRET', this.config.get<string>('X_CLIENT_SECRET')?.trim()],
-    ].filter((entry): entry is [string, string] => Boolean(entry[1]));
+    ]
+      .map(([k, v]) => (v ? ([k, trimEnvSecret(v)] as [string, string]) : null))
+      .filter((entry): entry is [string, string] => entry !== null);
 
     const uniqueValues = new Set(candidates.map(([, v]) => v));
     if (candidates.length > 1 && uniqueValues.size > 1) {
       this.logger.warn(
         `Multiple webhook CRC secrets differ (${candidates.map(([k]) => k).join(', ')}). ` +
-          `Active: ${secretSource(this.config)}. On the Webhook service only, unset X_CLIENT_SECRET ` +
-          `(OAuth 2.0) — use X_CONSUMER_SECRET or X_API_KEY_SECRET (= OAuth 1.0 Consumer Secret).`,
+          `Active: ${getXConsumerSecretSource(this.config)}. On Webhook only: set X_API_KEY_SECRET ` +
+          `(same as Hub) and remove X_CLIENT_SECRET (OAuth 2.0).`,
       );
     }
 
-    const source = secretSource(this.config);
+    const source = getXConsumerSecretSource(this.config);
     this.logger.log(
       `CRC/webhook signatures use ${source} (${getXConsumerSecret(this.config).length} chars)`,
     );

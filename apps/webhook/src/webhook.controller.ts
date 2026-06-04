@@ -13,7 +13,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
-import { getXConsumerSecret } from './config/consumer-secret.util';
+import {
+  getXConsumerSecret,
+  getXConsumerSecretSource,
+} from './config/consumer-secret.util';
 import { IncomingService } from './incoming/incoming.service';
 import { createCrcResponse, verifyWebhookSignature } from './x-webhook.crypto';
 
@@ -62,7 +65,9 @@ export class WebhookController {
     } catch (err) {
       if (err instanceof UnauthorizedException) {
         this.logger.error(
-          'X webhook signature verification failed — check Webhook X_CONSUMER_SECRET matches OAuth 1.0 API Key Secret',
+          `X webhook signature verification failed (using ${getXConsumerSecretSource(this.config)}, ` +
+            `${rawBody.length} byte body). On Webhook service set X_API_KEY_SECRET to the same ` +
+            `OAuth 1.0 API Key Secret as Hub; remove X_CLIENT_SECRET.`,
         );
       }
       throw err;

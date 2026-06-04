@@ -99,7 +99,7 @@ yarn create vite apps/web --template react-ts
 cd apps/web && yarn install
 ```
 
-Add a dev proxy so the browser calls same-origin `/api` and avoids CORS (Hub does not enable CORS today).
+Add a dev proxy so the browser calls same-origin `/api` (optional — Hub enables CORS for all origins).
 
 **`apps/web/vite.config.ts`:**
 
@@ -144,12 +144,11 @@ Deploy the frontend on its own host; set `HUB_API_URL` / `NEXT_PUBLIC_HUB_API_UR
 
 ### CORS in production
 
-For cross-origin browser calls (frontend on `app.example.com`, Hub on `hub.example.com`), either:
+Hub enables CORS with `origin: '*'` in `apps/hub/src/main.ts`, so browsers can call the API from any frontend origin. Send JWTs via the `Authorization: Bearer` header.
 
-- **Recommended:** reverse proxy or Next/Vite proxy so the browser only talks to the frontend origin, or
-- Add CORS to `apps/hub/src/main.ts` (not implemented in this repo yet).
+For stricter production policy later, replace `*` with an allowlist in `main.ts` or gate it with an env variable.
 
-Server-side routes (Next.js Route Handlers, server actions) can call Hub directly without CORS.
+Server-side routes (Next.js Route Handlers, server actions) do not need CORS.
 
 ---
 

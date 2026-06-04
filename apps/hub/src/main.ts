@@ -4,6 +4,11 @@ import { HubModule } from './hub.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(HubModule);
+  app.enableCors({
+    origin: '*',
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  });
   app.setGlobalPrefix('api/v1', { exclude: ['/'] });
   app.useGlobalPipes(
     new ValidationPipe({

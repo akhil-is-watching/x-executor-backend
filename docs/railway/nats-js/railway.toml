@@ -1,0 +1,18 @@
+# NATS + JetStream — set this path in Railway: /docs/railway/nats-js/railway.toml
+# https://docs.railway.com/reference/config-as-code
+#
+# After deploy:
+#   1. Attach a volume mounted at /data (JetStream persistence).
+#   2. Keep the service private; wire webhook + processor with:
+#        NATS_URL=nats://${{Nats.RAILWAY_PRIVATE_DOMAIN}}:4222
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "docs/railway/nats-js/Dockerfile"
+dockerContextPath = "docs/railway/nats-js"
+watchPatterns = ["docs/railway/nats-js/**"]
+
+[deploy]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"

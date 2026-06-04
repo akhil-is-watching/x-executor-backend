@@ -1,0 +1,18 @@
+# Hub API — set this path in Railway: /docs/railway/hub/railway.toml
+# https://docs.railway.com/reference/config-as-code
+
+[build]
+buildCommand = "yarn build:hub"
+watchPatterns = [
+  "apps/hub/**",
+  "libs/**",
+  "package.json",
+  "yarn.lock",
+  "nest-cli.json",
+  "tsconfig*.json",
+]
+
+[deploy]
+startCommand = "yarn start:hub:prod"
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"

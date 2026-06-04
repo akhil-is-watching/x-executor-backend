@@ -1,0 +1,17 @@
+# DM processor — set this path in Railway: /docs/railway/processor/railway.toml
+
+[build]
+buildCommand = "yarn build:processor"
+watchPatterns = [
+  "apps/processor/**",
+  "libs/**",
+  "package.json",
+  "yarn.lock",
+  "nest-cli.json",
+  "tsconfig*.json",
+]
+
+[deploy]
+startCommand = "yarn start:processor:prod"
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"

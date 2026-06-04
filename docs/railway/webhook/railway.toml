@@ -1,0 +1,17 @@
+# Webhook ingress — set this path in Railway: /docs/railway/webhook/railway.toml
+
+[build]
+buildCommand = "yarn build:webhook"
+watchPatterns = [
+  "apps/webhook/**",
+  "libs/**",
+  "package.json",
+  "yarn.lock",
+  "nest-cli.json",
+  "tsconfig*.json",
+]
+
+[deploy]
+startCommand = "yarn start:webhook:prod"
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"

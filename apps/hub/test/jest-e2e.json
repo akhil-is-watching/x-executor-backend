@@ -1,0 +1,14 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@app/nats-js(|/.*)$": "<rootDir>/../../../libs/nats-js/src/$1",
+    "^@app/redis(|/.*)$": "<rootDir>/../../../libs/redis/src/$1",
+    "^@app/shared(|/.*)$": "<rootDir>/../../../libs/shared/src/$1"
+  }
+}

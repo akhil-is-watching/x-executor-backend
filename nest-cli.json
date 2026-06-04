@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/x-executor/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/x-executor/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/x-executor",
+  "projects": {
+    "hub": {
+      "type": "application",
+      "root": "apps/hub",
+      "entryFile": "main",
+      "sourceRoot": "apps/hub/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/hub/tsconfig.app.json"
+      }
+    },
+    "getxapi": {
+      "type": "library",
+      "root": "libs/getxapi",
+      "entryFile": "index",
+      "sourceRoot": "libs/getxapi/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/getxapi/tsconfig.lib.json"
+      }
+    },
+    "llm": {
+      "type": "library",
+      "root": "libs/llm",
+      "entryFile": "index",
+      "sourceRoot": "libs/llm/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/llm/tsconfig.lib.json"
+      }
+    },
+    "nats-js": {
+      "type": "library",
+      "root": "libs/nats-js",
+      "entryFile": "index",
+      "sourceRoot": "libs/nats-js/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/nats-js/tsconfig.lib.json"
+      }
+    },
+    "processor": {
+      "type": "application",
+      "root": "apps/processor",
+      "entryFile": "main",
+      "sourceRoot": "apps/processor/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/processor/tsconfig.app.json"
+      }
+    },
+    "redis": {
+      "type": "library",
+      "root": "libs/redis",
+      "entryFile": "index",
+      "sourceRoot": "libs/redis/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/redis/tsconfig.lib.json"
+      }
+    },
+    "sender": {
+      "type": "application",
+      "root": "apps/sender",
+      "entryFile": "main",
+      "sourceRoot": "apps/sender/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/sender/tsconfig.app.json"
+      }
+    },
+    "shared": {
+      "type": "library",
+      "root": "libs/shared",
+      "entryFile": "index",
+      "sourceRoot": "libs/shared/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/shared/tsconfig.lib.json"
+      }
+    },
+    "webhook": {
+      "type": "application",
+      "root": "apps/webhook",
+      "entryFile": "main",
+      "sourceRoot": "apps/webhook/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/webhook/tsconfig.app.json"
+      }
+    },
+    "x-executor": {
+      "type": "application",
+      "root": "apps/x-executor",
+      "entryFile": "main",
+      "sourceRoot": "apps/x-executor/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/x-executor/tsconfig.app.json"
+      }
+    }
+  }
+}

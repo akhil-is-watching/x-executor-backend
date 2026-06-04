@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -16,7 +16,7 @@ export interface ConnectionSubscriptionResult {
 }
 
 @Injectable()
-export class WebhooksService {
+export class WebhooksService implements OnModuleInit {
   private readonly logger = new Logger(WebhooksService.name);
 
   constructor(
@@ -25,6 +25,21 @@ export class WebhooksService {
     private readonly tokenCrypto: TokenCryptoService,
     private readonly xWebhooksApi: XWebhooksApiService,
   ) {}
+
+  /** Drop legacy webhookId_1 unique index left over from the old per-URL schema. */
+  async onModuleInit(): Promise<void> {
+    try {
+      const indexes = await this.webhookModel.collection.indexes();
+      const hasLegacy = indexes.some((idx) => idx.name === 'webhookId_1');
+      if (hasLegacy) {
+        await this.webhookModel.collection.dropIndex('webhookId_1');
+        this.logger.log('Dropped legacy webhookId_1 index from connection_webhooks');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Could not drop legacy webhookId_1 index: ${message}`);
+    }
+  }
 
   getSharedWebhookUrl(): string {
     return this.xWebhooksApi.getSharedWebhookUrl();

@@ -50,6 +50,14 @@ export class XWebhooksApiService {
     } catch (err: unknown) {
       const xData = (err as Record<string, unknown>)['data'];
       const detail = err instanceof Error ? err.message : String(err);
+      const status = (err as { code?: number })?.code;
+      if (status === 403) {
+        throw new Error(
+          `X account activity subscription failed (403 Forbidden). ` +
+            `Check that your X app has "Account Activity API" product access in the Developer Portal ` +
+            `(Products → Account Activity API). data: ${JSON.stringify(xData ?? '')}`,
+        );
+      }
       throw new Error(
         `X account activity subscription failed: ${detail} | data: ${JSON.stringify(xData ?? '')}`,
       );

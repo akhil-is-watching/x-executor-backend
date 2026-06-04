@@ -45,6 +45,15 @@ export class XApiService {
     return `https://twitter.com/i/oauth2/authorize?${query.toString()}`;
   }
 
+  /** X often returns JSON ("Redirect is requested") unless the browser hits the login flow first. */
+  buildBrowserAuthorizeUrl(params: {
+    state: string;
+    codeChallenge: string;
+  }): string {
+    const authorizeUrl = this.buildAuthorizeUrl(params);
+    return `https://twitter.com/i/flow/login?hide_message=true&redirect_after_login=${encodeURIComponent(authorizeUrl)}`;
+  }
+
   async exchangeCodeForTokens(
     code: string,
     codeVerifier: string,

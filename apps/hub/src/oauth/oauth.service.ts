@@ -47,7 +47,10 @@ export class OAuthService {
       orgId: invite.orgId.toString(),
     });
 
-    const url = this.xApi.buildAuthorizeUrl({ state: stateId, codeChallenge });
+    const url = this.xApi.buildBrowserAuthorizeUrl({
+      state: stateId,
+      codeChallenge,
+    });
     res.redirect(url);
   }
 

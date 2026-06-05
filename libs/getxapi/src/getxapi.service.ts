@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  buildConversationId,
+  isGetxapiConversationId,
   resolveGetxapiConversationId,
 } from '@app/shared';
 import { GetxapiRateLimiterService } from './getxapi-rate-limiter.service';
@@ -17,8 +19,43 @@ import type {
   SendDmParams,
 } from './getxapi.types';
 
+type DmListMatch = { conversationId: string; recipientId?: string };
+
+function normalizeUserId(
+  value: string | number | undefined | null,
+): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return String(value);
+}
+
+function isSameUser(
+  left: string | number | undefined | null,
+  right: string | number | undefined | null,
+): boolean {
+  const normalizedLeft = normalizeUserId(left);
+  const normalizedRight = normalizeUserId(right);
+  return (
+    normalizedLeft !== undefined &&
+    normalizedRight !== undefined &&
+    normalizedLeft === normalizedRight
+  );
+}
+
+function readMessageField(
+  message: GetXApiDmMessage | Record<string, unknown>,
+  camelKey: string,
+  snakeKey: string,
+): string | undefined {
+  const record = message as Record<string, unknown>;
+  return normalizeUserId(record[camelKey] ?? record[snakeKey]);
+}
+
 @Injectable()
 export class GetxapiService {
+  private readonly logger = new Logger(GetxapiService.name);
+
   constructor(
     private readonly config: ConfigService,
     private readonly rateLimiter: GetxapiRateLimiterService,
@@ -143,15 +180,56 @@ export class GetxapiService {
     authToken: string,
     xUserId: string,
     recipientId?: string,
-  ): Promise<{ conversationId: string; recipientId?: string }> {
-    const list = await this.listConversations({ authToken, tab: 'all' });
-    const match = this.pickInboundConversation(list.conversations ?? [], xUserId, recipientId);
-    if (match) {
-      return match;
+  ): Promise<DmListMatch> {
+    const diagnostics: string[] = [];
+
+    for (const tab of ['all', 'requests'] as const) {
+      const list = await this.listConversations({ authToken, tab });
+      const conversations = list.conversations ?? [];
+      const messages = list.messages ?? [];
+      diagnostics.push(
+        `tab=${tab} conversations=${conversations.length} messages=${messages.length}`,
+      );
+
+      const fromInbound = this.pickInboundConversation(
+        conversations,
+        xUserId,
+        recipientId,
+      );
+      if (fromInbound) {
+        this.logger.log(
+          `Resolved dm/list via inbound conversation tab=${tab} id=${fromInbound.conversationId}`,
+        );
+        return fromInbound;
+      }
+
+      const fromMessages = this.pickInboundFromFlatMessages(
+        messages,
+        xUserId,
+        recipientId,
+      );
+      if (fromMessages) {
+        this.logger.log(
+          `Resolved dm/list via flat messages tab=${tab} id=${fromMessages.conversationId}`,
+        );
+        return fromMessages;
+      }
+
+      const relaxed = this.pickMostRecentOneToOne(
+        conversations,
+        xUserId,
+        recipientId,
+      );
+      if (relaxed) {
+        this.logger.warn(
+          `Resolved dm/list via most-recent 1:1 fallback tab=${tab} id=${relaxed.conversationId}`,
+        );
+        return relaxed;
+      }
     }
 
     throw new Error(
-      'GetXAPI could not resolve an inbound DM conversation from dm/list',
+      `GetXAPI could not resolve an inbound DM conversation from dm/list (${diagnostics.join('; ')})`,
     );
   }
 
@@ -159,26 +237,91 @@ export class GetxapiService {
     conversations: GetXApiDmListConversation[],
     xUserId: string,
     recipientId?: string,
-  ): { conversationId: string; recipientId?: string } | null {
+  ): DmListMatch | null {
     const candidates = conversations
       .filter((conversation) => conversation.type !== 'GROUP_DM')
       .map((conversation) => {
-        const peerId = conversation.participants?.find(
-          (participant) => participant.id !== xUserId,
-        )?.id;
+        const peerId = this.extractPeerId(conversation, xUserId);
         const lastMessage = conversation.last_message;
+        const senderId = lastMessage
+          ? readMessageField(lastMessage, 'senderId', 'sender_id')
+          : undefined;
         const inbound =
           conversation.unread === true ||
-          (lastMessage !== undefined && lastMessage.senderId !== xUserId);
+          (senderId !== undefined && !isSameUser(senderId, xUserId));
         return { conversation, peerId, inbound };
       })
       .filter(({ peerId, inbound }) => {
-        if (recipientId && peerId !== recipientId) {
+        if (!peerId) {
+          return false;
+        }
+        if (recipientId && !isSameUser(peerId, recipientId)) {
           return false;
         }
         return inbound;
       });
 
+    return this.pickBestConversationCandidate(candidates);
+  }
+
+  private pickInboundFromFlatMessages(
+    messages: GetXApiDmMessage[],
+    xUserId: string,
+    recipientId?: string,
+  ): DmListMatch | null {
+    for (const message of messages) {
+      const senderId = readMessageField(message, 'senderId', 'sender_id');
+      if (!senderId || isSameUser(senderId, xUserId)) {
+        continue;
+      }
+      if (recipientId && !isSameUser(senderId, recipientId)) {
+        continue;
+      }
+
+      const conversationId = this.resolveListMessageConversationId(
+        message,
+        xUserId,
+      );
+      if (!conversationId) {
+        continue;
+      }
+
+      return { conversationId, recipientId: senderId };
+    }
+
+    return null;
+  }
+
+  private pickMostRecentOneToOne(
+    conversations: GetXApiDmListConversation[],
+    xUserId: string,
+    recipientId?: string,
+  ): DmListMatch | null {
+    const candidates = conversations
+      .filter((conversation) => conversation.type !== 'GROUP_DM')
+      .map((conversation) => ({
+        conversation,
+        peerId: this.extractPeerId(conversation, xUserId),
+      }))
+      .filter(({ conversation, peerId }) => {
+        if (!peerId) {
+          return false;
+        }
+        if (recipientId && !isSameUser(peerId, recipientId)) {
+          return false;
+        }
+        return isGetxapiConversationId(conversation.conversation_id);
+      });
+
+    return this.pickBestConversationCandidate(candidates);
+  }
+
+  private pickBestConversationCandidate(
+    candidates: Array<{
+      conversation: GetXApiDmListConversation;
+      peerId?: string;
+    }>,
+  ): DmListMatch | null {
     if (candidates.length === 0) {
       return null;
     }
@@ -190,10 +333,78 @@ export class GetxapiService {
     });
 
     const best = candidates[0];
+    if (!best.peerId) {
+      return null;
+    }
+
     return {
       conversationId: best.conversation.conversation_id,
       recipientId: best.peerId,
     };
+  }
+
+  private extractPeerId(
+    conversation: GetXApiDmListConversation,
+    xUserId: string,
+  ): string | undefined {
+    const participants = conversation.participants ?? [];
+    const peerFromParticipants = participants.find(
+      (participant) => !isSameUser(participant.id, xUserId),
+    )?.id;
+    if (peerFromParticipants) {
+      return normalizeUserId(peerFromParticipants);
+    }
+
+    const lastMessage = conversation.last_message;
+    if (lastMessage) {
+      const senderId = readMessageField(lastMessage, 'senderId', 'sender_id');
+      const recipientIdOnMessage = readMessageField(
+        lastMessage,
+        'recipientId',
+        'recipient_id',
+      );
+      if (senderId && !isSameUser(senderId, xUserId)) {
+        return senderId;
+      }
+      if (recipientIdOnMessage && !isSameUser(recipientIdOnMessage, xUserId)) {
+        return recipientIdOnMessage;
+      }
+    }
+
+    if (participants.length === 1) {
+      return normalizeUserId(participants[0].id);
+    }
+
+    return undefined;
+  }
+
+  private resolveListMessageConversationId(
+    message: GetXApiDmMessage,
+    xUserId: string,
+  ): string | null {
+    const rawConversationId = readMessageField(
+      message,
+      'conversationId',
+      'conversation_id',
+    );
+    if (rawConversationId && isGetxapiConversationId(rawConversationId)) {
+      return rawConversationId;
+    }
+
+    const senderId = readMessageField(message, 'senderId', 'sender_id');
+    const recipientId = readMessageField(message, 'recipientId', 'recipient_id');
+    const peerId =
+      senderId && !isSameUser(senderId, xUserId)
+        ? senderId
+        : recipientId && !isSameUser(recipientId, xUserId)
+          ? recipientId
+          : undefined;
+
+    if (!peerId) {
+      return null;
+    }
+
+    return buildConversationId(xUserId, peerId);
   }
 
   async sendDm(params: SendDmParams): Promise<GetXApiSendDmResponse> {
@@ -239,7 +450,8 @@ export class GetxapiService {
     xUserId: string,
   ): string | null {
     for (const message of messages) {
-      if (message.senderId === xUserId) {
+      const senderId = readMessageField(message, 'senderId', 'sender_id');
+      if (!senderId || isSameUser(senderId, xUserId)) {
         continue;
       }
       const text = message.text?.trim();
@@ -255,8 +467,9 @@ export class GetxapiService {
     xUserId: string,
   ): string | null {
     for (const message of messages) {
-      if (message.senderId !== xUserId) {
-        return message.senderId;
+      const senderId = readMessageField(message, 'senderId', 'sender_id');
+      if (senderId && !isSameUser(senderId, xUserId)) {
+        return senderId;
       }
     }
     return null;

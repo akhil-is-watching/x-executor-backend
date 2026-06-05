@@ -1,9 +1,12 @@
 export interface GetXApiDmMessage {
   id: string;
   conversationId?: string;
+  conversation_id?: string;
   createdAt?: string;
-  senderId: string;
+  senderId?: string;
+  sender_id?: string;
   recipientId?: string;
+  recipient_id?: string;
   text?: string;
 }
 
@@ -49,9 +52,11 @@ export interface GetXApiDmListResponse {
   userId?: string;
   tab?: string;
   conversation_count?: number;
+  message_count?: number;
   has_more?: boolean;
   next_cursor?: string | null;
   conversations?: GetXApiDmListConversation[];
+  messages?: GetXApiDmMessage[];
 }
 
 export interface FetchInboundConversationParams {

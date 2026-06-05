@@ -202,6 +202,133 @@ describe('GetxapiService', () => {
     );
   });
 
+  it('fetchInboundConversation resolves from flat messages when conversations are empty', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversations: [],
+          messages: [
+            {
+              id: '1',
+              conversation_id: '3012852462-1345154135381794816',
+              sender_id: '1345154135381794816',
+              recipient_id: '3012852462',
+              text: 'hello',
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversation_id: '3012852462-1345154135381794816',
+          messages: [{ id: '1', senderId: '1345154135381794816', text: 'hello' }],
+        }),
+      });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await service.fetchInboundConversation({
+      authToken: 'auth',
+      xUserId: '3012852462',
+      conversationId: 'opaque-xchat-id',
+    });
+
+    expect(result.conversationId).toBe('3012852462-1345154135381794816');
+    expect(result.recipientId).toBe('1345154135381794816');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('fetchInboundConversation uses most-recent 1:1 fallback when thread is already read', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversations: [
+            {
+              conversation_id: '3012852462-1345154135381794816',
+              type: 'ONE_TO_ONE',
+              unread: false,
+              sort_timestamp: '2026-05-26T10:11:00.000Z',
+              participants: [{ id: '1345154135381794816' }],
+              last_message: {
+                id: '1',
+                senderId: '3012852462',
+                text: 'bot reply',
+              },
+            },
+          ],
+          messages: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversation_id: '3012852462-1345154135381794816',
+          messages: [{ id: '2', senderId: '1345154135381794816', text: 'hello' }],
+        }),
+      });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await service.fetchInboundConversation({
+      authToken: 'auth',
+      xUserId: '3012852462',
+      conversationId: 'opaque-xchat-id',
+    });
+
+    expect(result.conversationId).toBe('3012852462-1345154135381794816');
+    expect(result.recipientId).toBe('1345154135381794816');
+  });
+
+  it('fetchInboundConversation checks requests tab after all tab misses', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ conversations: [], messages: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversations: [
+            {
+              conversation_id: '3012852462-1345154135381794816',
+              type: 'ONE_TO_ONE',
+              unread: true,
+              participants: [{ id: '1345154135381794816' }],
+              last_message: {
+                id: '1',
+                sender_id: '1345154135381794816',
+                text: 'request dm',
+              },
+            },
+          ],
+          messages: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversation_id: '3012852462-1345154135381794816',
+          messages: [{ id: '1', senderId: '1345154135381794816', text: 'request dm' }],
+        }),
+      });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await service.fetchInboundConversation({
+      authToken: 'auth',
+      xUserId: '3012852462',
+      conversationId: 'opaque-xchat-id',
+    });
+
+    expect(result.conversationId).toBe('3012852462-1345154135381794816');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).tab).toBe('all');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).tab).toBe('requests');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('sendDm calls GetXAPI', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,

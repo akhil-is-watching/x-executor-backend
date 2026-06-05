@@ -100,6 +100,20 @@ export class DmPipelineService {
       conversationId: dmContext.conversationId,
     });
 
+    const recipientId =
+      dmContext.recipientId ??
+      this.getxapi.extractLatestIncomingPeerId(
+        conversation.messages,
+        event.xUserId,
+      );
+
+    if (!recipientId) {
+      this.logger.warn(
+        `No peer recipient for conversation ${dmContext.conversationId} (event ${event.eventId})`,
+      );
+      return;
+    }
+
     const inboundText =
       this.getxapi.extractLatestIncomingPlainText(
         conversation.messages,
@@ -143,7 +157,7 @@ export class DmPipelineService {
       xUserId: event.xUserId,
       xUsername: event.xUsername,
       conversationId: dmContext.conversationId,
-      recipientId: dmContext.recipientId,
+      recipientId,
       inboundMessageId: dmContext.inboundMessageId,
       inboundText,
       replyText: llmResult.replyText,

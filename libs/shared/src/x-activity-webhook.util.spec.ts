@@ -41,7 +41,10 @@ describe('x-activity-webhook.util', () => {
   });
 
   it('normalizes chat.received into x_chat_events', () => {
-    const chatPayload = { encrypted: true, conversation_id: 'abc' };
+    const chatPayload = {
+      encrypted: true,
+      conversationId: 'abc',
+    };
     const raw = {
       data: {
         event_type: 'chat.received',

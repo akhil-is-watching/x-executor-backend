@@ -23,6 +23,7 @@ describe('DmPipelineService', () => {
   const mockGetxapi = {
     fetchConversation: jest.fn(),
     extractLatestIncomingPlainText: jest.fn(),
+    extractLatestIncomingPeerId: jest.fn(),
   };
   const mockLlm = { generateReply: jest.fn() };
 
@@ -71,6 +72,7 @@ describe('DmPipelineService', () => {
       messages: [{ id: '1', senderId: '1345154135381794816', text: 'hello' }],
     });
     mockGetxapi.extractLatestIncomingPlainText.mockReturnValue('hello');
+    mockGetxapi.extractLatestIncomingPeerId.mockReturnValue('1345154135381794816');
     mockLlm.generateReply.mockResolvedValue({
       replyText: 'We sell blue widgets.',
       isKnownAnswer: true,
@@ -150,7 +152,8 @@ describe('DmPipelineService', () => {
         x_chat_events: [
           {
             id: 'chat-msg-1',
-            sender_id: '1345154135381794816',
+            conversationId: 'xchat-conv-abc',
+            encodedEvent: 'base64...',
           },
         ],
       },
@@ -160,6 +163,7 @@ describe('DmPipelineService', () => {
       authToken: 'plain-auth-token',
       conversationId: 'xchat-conv-abc',
     });
+    expect(mockGetxapi.extractLatestIncomingPeerId).toHaveBeenCalled();
     expect(mockNats.publishJson).toHaveBeenCalledWith(
       NATS_SUBJECT_DM_REPLY_READY,
       expect.objectContaining({

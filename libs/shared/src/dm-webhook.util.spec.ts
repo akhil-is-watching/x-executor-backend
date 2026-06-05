@@ -82,4 +82,64 @@ describe('dm-webhook.util', () => {
       inboundTextFromWebhook: undefined,
     });
   });
+
+  it('parses XChat ChatMessageEvent camelCase fields', () => {
+    const payload = {
+      conversation_id: 'xchat-conv-abc',
+      x_chat_events: [
+        {
+          id: 'chat-msg-1',
+          conversationId: 'xchat-conv-abc',
+          senderId: '1345154135381794816',
+          encodedEvent: 'base64...',
+        },
+      ],
+    };
+
+    expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
+      conversationId: 'xchat-conv-abc',
+      recipientId: '1345154135381794816',
+      inboundMessageId: 'chat-msg-1',
+      inboundTextFromWebhook: undefined,
+    });
+  });
+
+  it('parses XChat when only conversationId is present on the event', () => {
+    const payload = {
+      x_chat_events: [
+        {
+          id: 'chat-msg-1',
+          conversationId: 'xchat-conv-only',
+          encodedEvent: 'base64...',
+        },
+      ],
+    };
+
+    expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
+      conversationId: 'xchat-conv-only',
+      inboundMessageId: 'chat-msg-1',
+      inboundTextFromWebhook: undefined,
+    });
+  });
+
+  it('normalizes raw XAA chat.received envelopes before parsing', () => {
+    const raw = {
+      data: {
+        event_type: 'chat.received',
+        filter: { user_id: '3012852462' },
+        payload: {
+          conversationId: 'xchat-from-xaa',
+          senderId: '1345154135381794816',
+          id: 'chat-msg-1',
+        },
+      },
+    };
+
+    expect(parseInboundDmFromWebhook(raw, '3012852462')).toEqual({
+      conversationId: 'xchat-from-xaa',
+      recipientId: '1345154135381794816',
+      inboundMessageId: 'chat-msg-1',
+      inboundTextFromWebhook: undefined,
+    });
+  });
 });

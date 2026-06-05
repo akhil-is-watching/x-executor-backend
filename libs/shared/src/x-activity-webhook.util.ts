@@ -94,8 +94,14 @@ export function normalizeXWebhookPayload(
     if (innerRecord.users !== undefined) {
       normalized.users = innerRecord.users;
     }
-    if (typeof innerRecord.conversation_id === 'string') {
-      normalized.conversation_id = innerRecord.conversation_id;
+    const conversationId =
+      typeof innerRecord.conversation_id === 'string'
+        ? innerRecord.conversation_id
+        : typeof innerRecord.conversationId === 'string'
+          ? innerRecord.conversationId
+          : undefined;
+    if (conversationId) {
+      normalized.conversation_id = conversationId;
     }
   }
 

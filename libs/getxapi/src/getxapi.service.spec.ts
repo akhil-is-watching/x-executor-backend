@@ -44,6 +44,18 @@ describe('GetxapiService', () => {
     expect(text).toBe('hello');
   });
 
+  it('extractLatestIncomingPeerId returns latest peer sender', () => {
+    expect(
+      service.extractLatestIncomingPeerId(
+        [
+          { id: '1', senderId: 'bot', text: 'bot reply' },
+          { id: '2', senderId: 'user-2', text: 'hello' },
+        ],
+        'bot',
+      ),
+    ).toBe('user-2');
+  });
+
   it('fetchConversation calls GetXAPI', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,

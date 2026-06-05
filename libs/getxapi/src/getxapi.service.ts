@@ -101,4 +101,16 @@ export class GetxapiService {
     }
     return null;
   }
+
+  extractLatestIncomingPeerId(
+    messages: GetXApiDmMessage[],
+    xUserId: string,
+  ): string | null {
+    for (const message of messages) {
+      if (message.senderId !== xUserId) {
+        return message.senderId;
+      }
+    }
+    return null;
+  }
 }

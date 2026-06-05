@@ -1,6 +1,9 @@
+import { normalizeXWebhookPayload } from './x-activity-webhook.util';
+
 export interface InboundDmWebhookContext {
   conversationId: string;
-  recipientId: string;
+  /** Omitted when XChat webhooks only include conversationId + encoded payload. */
+  recipientId?: string;
   inboundMessageId?: string;
   inboundTextFromWebhook?: string;
 }
@@ -18,6 +21,27 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function readConversationId(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): string | undefined {
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+    for (const key of [
+      'conversation_id',
+      'conversationId',
+      'dm_conversation_id',
+    ] as const) {
+      const value = source[key];
+      if (typeof value === 'string' && value.length > 0) {
+        return value;
+      }
+    }
+  }
+  return undefined;
 }
 
 function readMessageCreate(event: Record<string, unknown>) {
@@ -53,33 +77,41 @@ function readInboundChatEvent(
   xUserId: string,
   payloadConversationId?: string,
 ): InboundDmWebhookContext | null {
-  const senderRaw = event.sender_id ?? event.senderId;
-  if (senderRaw === undefined || senderRaw === null) {
-    return null;
-  }
-  const senderId = String(senderRaw);
-  if (senderId === xUserId) {
-    return null;
-  }
-
-  const conversationIdFromEvent =
-    typeof event.conversation_id === 'string'
-      ? event.conversation_id
-      : typeof event.dm_conversation_id === 'string'
-        ? event.dm_conversation_id
-        : undefined;
   const conversationId =
-    conversationIdFromEvent ??
-    payloadConversationId ??
-    buildConversationId(xUserId, senderId);
+    readConversationId(event, payloadConversationId ? { conversation_id: payloadConversationId } : null) ??
+    payloadConversationId;
 
-  return {
-    conversationId,
-    recipientId: senderId,
-    inboundMessageId:
-      event.id !== undefined ? String(event.id) : undefined,
-    inboundTextFromWebhook: undefined,
-  };
+  const senderRaw =
+    event.sender_id ??
+    event.senderId ??
+    event.message_sender_id ??
+    event.messageSenderId;
+  const messageIdRaw = event.id ?? event.messageId ?? event.message_id;
+
+  if (senderRaw !== undefined && senderRaw !== null) {
+    const senderId = String(senderRaw);
+    if (senderId !== xUserId) {
+      return {
+        conversationId:
+          conversationId ?? buildConversationId(xUserId, senderId),
+        recipientId: senderId,
+        inboundMessageId:
+          messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
+        inboundTextFromWebhook: undefined,
+      };
+    }
+  }
+
+  if (conversationId) {
+    return {
+      conversationId,
+      inboundMessageId:
+        messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
+      inboundTextFromWebhook: undefined,
+    };
+  }
+
+  return null;
 }
 
 function parseLegacyDmEvents(
@@ -134,13 +166,11 @@ function parseChatEvents(
 }
 
 export function parseInboundDmFromWebhook(
-  payload: Record<string, unknown>,
+  rawPayload: Record<string, unknown>,
   xUserId: string,
 ): InboundDmWebhookContext | null {
-  const payloadConversationId =
-    typeof payload.conversation_id === 'string'
-      ? payload.conversation_id
-      : undefined;
+  const payload = normalizeXWebhookPayload(rawPayload);
+  const payloadConversationId = readConversationId(payload);
 
   const legacyEvents = payload.direct_message_events;
   if (Array.isArray(legacyEvents) && legacyEvents.length > 0) {
@@ -150,6 +180,10 @@ export function parseInboundDmFromWebhook(
   const chatEvents = payload.x_chat_events;
   if (Array.isArray(chatEvents) && chatEvents.length > 0) {
     return parseChatEvents(chatEvents, xUserId, payloadConversationId);
+  }
+
+  if (payloadConversationId && payload.x_chat_events !== undefined) {
+    return { conversationId: payloadConversationId };
   }
 
   return null;

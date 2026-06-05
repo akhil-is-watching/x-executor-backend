@@ -39,6 +39,9 @@ export class IncomingService {
     rawPayload: Record<string, unknown>,
   ): Promise<ProcessXWebhookResult> {
     const payload = normalizeXWebhookPayload(rawPayload);
+    if (this.isXChatWebhook(rawPayload, payload)) {
+      this.logXChatWebhookStructure(rawPayload, payload);
+    }
     if (isXActivityWebhookPayload(rawPayload)) {
       this.logger.log(
         `Normalized XAA webhook event_type=${String(
@@ -95,5 +98,46 @@ export class IncomingService {
     }
 
     return { eventIds };
+  }
+
+  private isXChatWebhook(
+    rawPayload: Record<string, unknown>,
+    normalizedPayload: Record<string, unknown>,
+  ): boolean {
+    if (normalizedPayload.x_chat_events !== undefined) {
+      return true;
+    }
+
+    if (!isXActivityWebhookPayload(rawPayload)) {
+      return false;
+    }
+
+    const eventType = String(
+      (rawPayload.data as Record<string, unknown>)?.event_type ?? '',
+    );
+    return eventType.startsWith('chat.');
+  }
+
+  private logXChatWebhookStructure(
+    rawPayload: Record<string, unknown>,
+    normalizedPayload: Record<string, unknown>,
+  ): void {
+    this.logger.log(
+      `[XChat] raw webhook envelope: ${JSON.stringify(rawPayload, null, 2)}`,
+    );
+
+    const data = rawPayload.data;
+    if (data !== null && typeof data === 'object' && !Array.isArray(data)) {
+      const inner = (data as Record<string, unknown>).payload;
+      if (inner !== undefined) {
+        this.logger.log(
+          `[XChat] XAA inner payload: ${JSON.stringify(inner, null, 2)}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `[XChat] normalized payload: ${JSON.stringify(normalizedPayload, null, 2)}`,
+    );
   }
 }

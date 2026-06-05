@@ -23,6 +23,50 @@ export interface FetchConversationParams {
   count?: number;
 }
 
+export interface GetXApiDmListParams {
+  authToken: string;
+  tab?: 'all' | 'requests' | 'hidden';
+  cursor?: string;
+  count?: number;
+}
+
+export interface GetXApiDmParticipant {
+  id: string;
+  screen_name?: string;
+  name?: string;
+}
+
+export interface GetXApiDmListConversation {
+  conversation_id: string;
+  type?: string;
+  unread?: boolean;
+  sort_timestamp?: string;
+  participants?: GetXApiDmParticipant[];
+  last_message?: GetXApiDmMessage;
+}
+
+export interface GetXApiDmListResponse {
+  userId?: string;
+  tab?: string;
+  conversation_count?: number;
+  has_more?: boolean;
+  next_cursor?: string | null;
+  conversations?: GetXApiDmListConversation[];
+}
+
+export interface FetchInboundConversationParams {
+  authToken: string;
+  xUserId: string;
+  conversationId: string;
+  recipientId?: string;
+}
+
+export interface FetchInboundConversationResult {
+  conversation: GetXApiDmConversationResponse;
+  conversationId: string;
+  recipientId?: string;
+}
+
 export interface SendDmParams {
   authToken: string;
   recipientId?: string;

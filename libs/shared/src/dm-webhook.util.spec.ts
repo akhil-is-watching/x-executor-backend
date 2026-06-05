@@ -3,6 +3,7 @@ import {
   isDirectMessageWebhook,
   isInboundDmWebhook,
   parseInboundDmFromWebhook,
+  resolveGetxapiConversationId,
 } from './dm-webhook.util';
 
 describe('dm-webhook.util', () => {
@@ -76,7 +77,7 @@ describe('dm-webhook.util', () => {
     };
 
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
-      conversationId: 'xchat-conv-abc',
+      conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
@@ -97,7 +98,7 @@ describe('dm-webhook.util', () => {
     };
 
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
-      conversationId: 'xchat-conv-abc',
+      conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
@@ -136,10 +137,22 @@ describe('dm-webhook.util', () => {
     };
 
     expect(parseInboundDmFromWebhook(raw, '3012852462')).toEqual({
-      conversationId: 'xchat-from-xaa',
+      conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
     });
+  });
+
+  it('resolves GetXAPI conversation ids from recipientId', () => {
+    expect(
+      resolveGetxapiConversationId(
+        {
+          conversationId: 'opaque-xchat-id',
+          recipientId: '1345154135381794816',
+        },
+        '3012852462',
+      ),
+    ).toBe('3012852462-1345154135381794816');
   });
 });

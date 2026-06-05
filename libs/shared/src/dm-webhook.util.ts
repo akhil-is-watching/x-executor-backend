@@ -17,6 +17,24 @@ export function buildConversationId(userIdA: string, userIdB: string): string {
   return `${low}-${high}`;
 }
 
+/** GetXAPI /twitter/dm/conversation expects `3012852462-1345154135381794816` style ids. */
+export function isGetxapiConversationId(conversationId: string): boolean {
+  return /^\d+-\d+$/.test(conversationId);
+}
+
+export function resolveGetxapiConversationId(
+  context: Pick<InboundDmWebhookContext, 'conversationId' | 'recipientId'>,
+  xUserId: string,
+): string | null {
+  if (context.recipientId) {
+    return buildConversationId(xUserId, context.recipientId);
+  }
+  if (isGetxapiConversationId(context.conversationId)) {
+    return context.conversationId;
+  }
+  return null;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -72,28 +90,45 @@ function readMessageCreate(event: Record<string, unknown>) {
   };
 }
 
+function readSenderFromSigningKeys(
+  event: Record<string, unknown>,
+  xUserId: string,
+): string | undefined {
+  const signature = asRecord(event.messageEventSignature);
+  const keys = signature?.messageSigningKeyInfoList;
+  if (!Array.isArray(keys)) {
+    return undefined;
+  }
+
+  for (const rawKey of keys) {
+    const key = asRecord(rawKey);
+    const memberId = key?.memberId;
+    if (memberId !== undefined && memberId !== null && String(memberId) !== xUserId) {
+      return String(memberId);
+    }
+  }
+
+  return undefined;
+}
+
 function readInboundChatEvent(
   event: Record<string, unknown>,
   xUserId: string,
   payloadConversationId?: string,
 ): InboundDmWebhookContext | null {
-  const conversationId =
-    readConversationId(event, payloadConversationId ? { conversation_id: payloadConversationId } : null) ??
-    payloadConversationId;
-
   const senderRaw =
     event.sender_id ??
     event.senderId ??
     event.message_sender_id ??
-    event.messageSenderId;
+    event.messageSenderId ??
+    readSenderFromSigningKeys(event, xUserId);
   const messageIdRaw = event.id ?? event.messageId ?? event.message_id;
 
   if (senderRaw !== undefined && senderRaw !== null) {
     const senderId = String(senderRaw);
     if (senderId !== xUserId) {
       return {
-        conversationId:
-          conversationId ?? buildConversationId(xUserId, senderId),
+        conversationId: buildConversationId(xUserId, senderId),
         recipientId: senderId,
         inboundMessageId:
           messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
@@ -102,9 +137,22 @@ function readInboundChatEvent(
     }
   }
 
-  if (conversationId) {
+  const legacyConversationId = readConversationId(
+    payloadConversationId ? { conversation_id: payloadConversationId } : null,
+  );
+  if (legacyConversationId && isGetxapiConversationId(legacyConversationId)) {
     return {
-      conversationId,
+      conversationId: legacyConversationId,
+      inboundMessageId:
+        messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
+      inboundTextFromWebhook: undefined,
+    };
+  }
+
+  const opaqueConversationId = readConversationId(event);
+  if (opaqueConversationId) {
+    return {
+      conversationId: opaqueConversationId,
       inboundMessageId:
         messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
       inboundTextFromWebhook: undefined,

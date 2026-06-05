@@ -21,7 +21,7 @@ describe('DmPipelineService', () => {
 
   const mockNats = { publishJson: jest.fn() };
   const mockGetxapi = {
-    fetchConversation: jest.fn(),
+    fetchInboundConversation: jest.fn(),
     extractLatestIncomingPlainText: jest.fn(),
     extractLatestIncomingPeerId: jest.fn(),
   };
@@ -67,9 +67,13 @@ describe('DmPipelineService', () => {
       systemPrompt: 'We only sell blue widgets.',
       unknownReply: "I don't know",
     });
-    mockGetxapi.fetchConversation.mockResolvedValue({
-      conversation_id: '3012852462-1345154135381794816',
-      messages: [{ id: '1', senderId: '1345154135381794816', text: 'hello' }],
+    mockGetxapi.fetchInboundConversation.mockResolvedValue({
+      conversationId: '3012852462-1345154135381794816',
+      recipientId: '1345154135381794816',
+      conversation: {
+        conversation_id: '3012852462-1345154135381794816',
+        messages: [{ id: '1', senderId: '1345154135381794816', text: 'hello' }],
+      },
     });
     mockGetxapi.extractLatestIncomingPlainText.mockReturnValue('hello');
     mockGetxapi.extractLatestIncomingPeerId.mockReturnValue('1345154135381794816');
@@ -111,9 +115,11 @@ describe('DmPipelineService', () => {
   it('publishes x.dm.reply.ready for inbound DM webhooks', async () => {
     await service.handleWebhookEvent(baseEvent);
 
-    expect(mockGetxapi.fetchConversation).toHaveBeenCalledWith({
+    expect(mockGetxapi.fetchInboundConversation).toHaveBeenCalledWith({
       authToken: 'plain-auth-token',
+      xUserId: '3012852462',
       conversationId: '3012852462-1345154135381794816',
+      recipientId: '1345154135381794816',
     });
     expect(mockLlm.generateReply).toHaveBeenCalledWith({
       systemPrompt: 'We only sell blue widgets.',
@@ -159,15 +165,16 @@ describe('DmPipelineService', () => {
       },
     });
 
-    expect(mockGetxapi.fetchConversation).toHaveBeenCalledWith({
+    expect(mockGetxapi.fetchInboundConversation).toHaveBeenCalledWith({
       authToken: 'plain-auth-token',
+      xUserId: '3012852462',
       conversationId: 'xchat-conv-abc',
+      recipientId: undefined,
     });
-    expect(mockGetxapi.extractLatestIncomingPeerId).toHaveBeenCalled();
     expect(mockNats.publishJson).toHaveBeenCalledWith(
       NATS_SUBJECT_DM_REPLY_READY,
       expect.objectContaining({
-        conversationId: 'xchat-conv-abc',
+        conversationId: '3012852462-1345154135381794816',
         recipientId: '1345154135381794816',
       }),
     );

@@ -78,6 +78,106 @@ describe('GetxapiService', () => {
     expect(result.conversation_id).toBe('1-2');
   });
 
+  it('fetchInboundConversation falls back to dm/list for opaque XChat id', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversations: [
+            {
+              conversation_id: '3012852462-1345154135381794816',
+              type: 'ONE_TO_ONE',
+              unread: true,
+              participants: [
+                { id: '3012852462' },
+                { id: '1345154135381794816' },
+              ],
+              last_message: {
+                id: '1',
+                senderId: '1345154135381794816',
+                text: 'hello',
+              },
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversation_id: '3012852462-1345154135381794816',
+          messages: [{ id: '1', senderId: '1345154135381794816', text: 'hello' }],
+        }),
+      });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await service.fetchInboundConversation({
+      authToken: 'auth',
+      xUserId: '3012852462',
+      conversationId: 'opaque-xchat-id',
+    });
+
+    expect(result.conversationId).toBe('3012852462-1345154135381794816');
+    expect(result.recipientId).toBe('1345154135381794816');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://api.getxapi.com/twitter/dm/list',
+    );
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      'https://api.getxapi.com/twitter/dm/conversation',
+    );
+  });
+
+  it('fetchInboundConversation retries dm/list after legacy id 404', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () =>
+          '{"error":"HTTP 404: {\\"errors\\":[{\\"code\\":279,\\"message\\":\\"The direct message conversation doesn\'t exist.\\"}]}"}',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversations: [
+            {
+              conversation_id: '3012852462-1345154135381794816',
+              type: 'ONE_TO_ONE',
+              unread: true,
+              participants: [
+                { id: '3012852462' },
+                { id: '1345154135381794816' },
+              ],
+              last_message: {
+                id: '1',
+                senderId: '1345154135381794816',
+                text: 'hello',
+              },
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversation_id: '3012852462-1345154135381794816',
+          messages: [{ id: '1', senderId: '1345154135381794816', text: 'hello' }],
+        }),
+      });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await service.fetchInboundConversation({
+      authToken: 'auth',
+      xUserId: '3012852462',
+      conversationId: '3012852462-1345154135381794816',
+      recipientId: '1345154135381794816',
+    });
+
+    expect(result.conversationId).toBe('3012852462-1345154135381794816');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('sendDm calls GetXAPI', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,

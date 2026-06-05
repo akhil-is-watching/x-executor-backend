@@ -95,12 +95,16 @@ export class DmPipelineService {
     }
 
     const authToken = this.tokenCrypto.decrypt(connection.authTokenEnc);
-    const conversation = await this.getxapi.fetchConversation({
+    const inboundConversation = await this.getxapi.fetchInboundConversation({
       authToken,
+      xUserId: event.xUserId,
       conversationId: dmContext.conversationId,
+      recipientId: dmContext.recipientId,
     });
+    const conversation = inboundConversation.conversation;
 
     const recipientId =
+      inboundConversation.recipientId ??
       dmContext.recipientId ??
       this.getxapi.extractLatestIncomingPeerId(
         conversation.messages,
@@ -156,7 +160,7 @@ export class DmPipelineService {
       connectionId: event.connectionId,
       xUserId: event.xUserId,
       xUsername: event.xUsername,
-      conversationId: dmContext.conversationId,
+      conversationId: inboundConversation.conversationId,
       recipientId,
       inboundMessageId: dmContext.inboundMessageId,
       inboundText,

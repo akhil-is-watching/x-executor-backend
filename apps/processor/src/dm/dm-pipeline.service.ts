@@ -95,6 +95,10 @@ export class DmPipelineService {
     }
 
     const authToken = this.tokenCrypto.decrypt(connection.authTokenEnc);
+    this.logger.log(
+      `Fetching GetXAPI conversation eventId=${event.eventId} ` +
+        `webhookConversation=${dmContext.conversationId} recipientHint=${dmContext.recipientId ?? 'none'}`,
+    );
     const inboundConversation = await this.getxapi.fetchInboundConversation({
       authToken,
       xUserId: event.xUserId,
@@ -102,6 +106,13 @@ export class DmPipelineService {
       recipientId: dmContext.recipientId,
     });
     const conversation = inboundConversation.conversation;
+
+    if (inboundConversation.conversationId !== dmContext.conversationId) {
+      this.logger.log(
+        `Resolved GetXAPI conversation eventId=${event.eventId} ` +
+          `${dmContext.conversationId} → ${inboundConversation.conversationId}`,
+      );
+    }
 
     const recipientId =
       inboundConversation.recipientId ??
@@ -113,7 +124,7 @@ export class DmPipelineService {
 
     if (!recipientId) {
       this.logger.warn(
-        `No peer recipient for conversation ${dmContext.conversationId} (event ${event.eventId})`,
+        `No peer recipient for conversation ${inboundConversation.conversationId} (event ${event.eventId})`,
       );
       return;
     }
@@ -128,13 +139,13 @@ export class DmPipelineService {
 
     if (!inboundText) {
       this.logger.warn(
-        `No inbound plain text for conversation ${dmContext.conversationId} (event ${event.eventId})`,
+        `No inbound plain text for conversation ${inboundConversation.conversationId} (event ${event.eventId})`,
       );
       return;
     }
 
     this.logger.log(
-      `DM inbound text eventId=${event.eventId} conversation=${dmContext.conversationId}: ${JSON.stringify(inboundText)}`,
+      `DM inbound text eventId=${event.eventId} conversation=${inboundConversation.conversationId}: ${JSON.stringify(inboundText)}`,
     );
 
     const unknownReply =

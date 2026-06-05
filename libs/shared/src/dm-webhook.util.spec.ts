@@ -155,4 +155,66 @@ describe('dm-webhook.util', () => {
       ),
     ).toBe('3012852462-1345154135381794816');
   });
+
+  it('resolves GetXAPI conversation ids from XChat colon conversation_id', () => {
+    expect(
+      resolveGetxapiConversationId(
+        {
+          conversationId: '1390625949587173378:1774607208379',
+        },
+        '1390625949587173378',
+      ),
+    ).toBe('1774607208379-1390625949587173378');
+  });
+
+  it('parses real XAA chat.received snake_case when sender_id is the bot account', () => {
+    const raw = {
+      data: {
+        event_type: 'chat.received',
+        filter: { user_id: '1390625949587173378' },
+        payload: {
+          id: '60d9a817-bbea-43c7-84b2-c9b2345718a2',
+          sender_id: '1390625949587173378',
+          conversation_id: '1390625949587173378:1390625949587173378',
+          encoded_event: 'CwAB...',
+          message_event_signature: {
+            public_key_version: '1774607208379',
+            signature: 'abc',
+            signature_version: '7',
+            signing_public_key: 'MFkw...',
+          },
+        },
+      },
+    };
+
+    expect(parseInboundDmFromWebhook(raw, '1390625949587173378')).toEqual({
+      conversationId: '1390625949587173378:1390625949587173378',
+      inboundMessageId: '60d9a817-bbea-43c7-84b2-c9b2345718a2',
+      inboundTextFromWebhook: undefined,
+    });
+  });
+
+  it('parses XChat colon conversation_id with distinct peer as GetXAPI legacy id', () => {
+    expect(
+      parseInboundDmFromWebhook(
+        {
+          for_user_id: '1390625949587173378',
+          conversation_id: '1390625949587173378:1774607208379',
+          x_chat_events: [
+            {
+              id: 'msg-1',
+              sender_id: '1390625949587173378',
+              conversation_id: '1390625949587173378:1774607208379',
+            },
+          ],
+        },
+        '1390625949587173378',
+      ),
+    ).toEqual({
+      conversationId: '1774607208379-1390625949587173378',
+      recipientId: '1774607208379',
+      inboundMessageId: 'msg-1',
+      inboundTextFromWebhook: undefined,
+    });
+  });
 });

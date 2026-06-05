@@ -183,6 +183,12 @@ export class GetxapiService {
       return null;
     }
 
+    candidates.sort((left, right) => {
+      const leftTs = left.conversation.sort_timestamp ?? '';
+      const rightTs = right.conversation.sort_timestamp ?? '';
+      return rightTs.localeCompare(leftTs);
+    });
+
     const best = candidates[0];
     return {
       conversationId: best.conversation.conversation_id,

@@ -22,6 +22,23 @@ export function isGetxapiConversationId(conversationId: string): boolean {
   return /^\d+-\d+$/.test(conversationId);
 }
 
+/** XChat uses `userId:peerId` (colon). Returns the participant that is not the bot. */
+export function parsePeerFromXChatConversationId(
+  conversationId: string,
+  xUserId: string,
+): string | null {
+  if (!conversationId.includes(':')) {
+    return null;
+  }
+
+  const peer = conversationId
+    .split(':')
+    .map((part) => part.trim())
+    .find((part) => part.length > 0 && part !== xUserId);
+
+  return peer ?? null;
+}
+
 export function resolveGetxapiConversationId(
   context: Pick<InboundDmWebhookContext, 'conversationId' | 'recipientId'>,
   xUserId: string,
@@ -31,6 +48,13 @@ export function resolveGetxapiConversationId(
   }
   if (isGetxapiConversationId(context.conversationId)) {
     return context.conversationId;
+  }
+  const colonPeer = parsePeerFromXChatConversationId(
+    context.conversationId,
+    xUserId,
+  );
+  if (colonPeer) {
+    return buildConversationId(xUserId, colonPeer);
   }
   return null;
 }
@@ -94,21 +118,53 @@ function readSenderFromSigningKeys(
   event: Record<string, unknown>,
   xUserId: string,
 ): string | undefined {
-  const signature = asRecord(event.messageEventSignature);
-  const keys = signature?.messageSigningKeyInfoList;
+  const signature =
+    asRecord(event.messageEventSignature) ??
+    asRecord(event.message_event_signature);
+  const keys =
+    signature?.messageSigningKeyInfoList ??
+    signature?.message_signing_key_info_list;
   if (!Array.isArray(keys)) {
     return undefined;
   }
 
   for (const rawKey of keys) {
     const key = asRecord(rawKey);
-    const memberId = key?.memberId;
+    const memberId = key?.memberId ?? key?.member_id;
     if (memberId !== undefined && memberId !== null && String(memberId) !== xUserId) {
       return String(memberId);
     }
   }
 
   return undefined;
+}
+
+function resolveXChatPeerAndConversation(
+  event: Record<string, unknown>,
+  xUserId: string,
+  payloadConversationId?: string,
+): Pick<InboundDmWebhookContext, 'conversationId' | 'recipientId'> | null {
+  const conversationId = readConversationId(
+    event,
+    payloadConversationId ? { conversation_id: payloadConversationId } : null,
+  );
+  if (!conversationId) {
+    return null;
+  }
+
+  const colonPeer = parsePeerFromXChatConversationId(conversationId, xUserId);
+  if (colonPeer) {
+    return {
+      conversationId: buildConversationId(xUserId, colonPeer),
+      recipientId: colonPeer,
+    };
+  }
+
+  if (isGetxapiConversationId(conversationId)) {
+    return { conversationId };
+  }
+
+  return { conversationId };
 }
 
 function readInboundChatEvent(
@@ -137,22 +193,14 @@ function readInboundChatEvent(
     }
   }
 
-  const legacyConversationId = readConversationId(
-    payloadConversationId ? { conversation_id: payloadConversationId } : null,
+  const fromConversation = resolveXChatPeerAndConversation(
+    event,
+    xUserId,
+    payloadConversationId,
   );
-  if (legacyConversationId && isGetxapiConversationId(legacyConversationId)) {
+  if (fromConversation) {
     return {
-      conversationId: legacyConversationId,
-      inboundMessageId:
-        messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
-      inboundTextFromWebhook: undefined,
-    };
-  }
-
-  const opaqueConversationId = readConversationId(event);
-  if (opaqueConversationId) {
-    return {
-      conversationId: opaqueConversationId,
+      ...fromConversation,
       inboundMessageId:
         messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
       inboundTextFromWebhook: undefined,

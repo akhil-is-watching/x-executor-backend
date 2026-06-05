@@ -22,6 +22,7 @@ export interface GetXApiDmConversationResponse {
 export interface FetchConversationParams {
   authToken: string;
   conversationId: string;
+  conversationToken?: string;
   cursor?: string;
   count?: number;
 }
@@ -64,6 +65,7 @@ export interface FetchInboundConversationParams {
   xUserId: string;
   conversationId: string;
   recipientId?: string;
+  conversationToken?: string;
 }
 
 export interface FetchInboundConversationResult {

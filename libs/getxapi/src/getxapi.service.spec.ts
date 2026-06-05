@@ -82,6 +82,11 @@ describe('GetxapiService', () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => 'not found',
+      })
+      .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           conversations: [
@@ -119,12 +124,12 @@ describe('GetxapiService', () => {
 
     expect(result.conversationId).toBe('3012852462-1345154135381794816');
     expect(result.recipientId).toBe('1345154135381794816');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      'https://api.getxapi.com/twitter/dm/list',
+      'https://api.getxapi.com/twitter/dm/conversation',
     );
     expect(fetchMock.mock.calls[1][0]).toBe(
-      'https://api.getxapi.com/twitter/dm/conversation',
+      'https://api.getxapi.com/twitter/dm/list',
     );
   });
 
@@ -178,11 +183,11 @@ describe('GetxapiService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it('fetchInboundConversation resolves XChat colon conversation id', async () => {
+  it('fetchInboundConversation uses XChat colon id on /twitter/dm/conversation before legacy resolved id', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        conversation_id: '1390625949587173378-1774607208379',
+        conversation_id: '1774607208379-1390625949587173378',
         messages: [{ id: '1', senderId: '1774607208379', text: 'hello' }],
       }),
     });
@@ -198,13 +203,51 @@ describe('GetxapiService', () => {
     expect(result.recipientId).toBe('1774607208379');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).conversation_id).toBe(
-      '1774607208379-1390625949587173378',
+      '1390625949587173378:1774607208379',
     );
+  });
+
+  it('fetchInboundConversation fetches XChat webhook id directly via /twitter/dm/conversation', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        conversation_id: '1390625949587173378:1390625949587173378',
+        messages: [{ id: '1', senderId: '1774607208379', text: 'hello' }],
+      }),
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await service.fetchInboundConversation({
+      authToken: 'auth',
+      xUserId: '1390625949587173378',
+      conversationId: '1390625949587173378:1390625949587173378',
+      conversationToken: 'jwt-token',
+    });
+
+    expect(result.conversationId).toBe(
+      '1390625949587173378:1390625949587173378',
+    );
+    expect(result.recipientId).toBe('1774607208379');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://api.getxapi.com/twitter/dm/conversation',
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      auth_token: 'auth',
+      conversation_id: '1390625949587173378:1390625949587173378',
+      conversation_token: 'jwt-token',
+      count: 50,
+    });
   });
 
   it('fetchInboundConversation resolves from flat messages when conversations are empty', async () => {
     const fetchMock = jest
       .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => 'not found',
+      })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -237,12 +280,17 @@ describe('GetxapiService', () => {
 
     expect(result.conversationId).toBe('3012852462-1345154135381794816');
     expect(result.recipientId).toBe('1345154135381794816');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('fetchInboundConversation uses most-recent 1:1 fallback when thread is already read', async () => {
     const fetchMock = jest
       .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => 'not found',
+      })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -286,6 +334,11 @@ describe('GetxapiService', () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => 'not found',
+      })
+      .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ conversations: [], messages: [] }),
       })
@@ -324,9 +377,9 @@ describe('GetxapiService', () => {
     });
 
     expect(result.conversationId).toBe('3012852462-1345154135381794816');
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).tab).toBe('all');
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).tab).toBe('requests');
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).tab).toBe('all');
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).tab).toBe('requests');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('sendDm calls GetXAPI', async () => {

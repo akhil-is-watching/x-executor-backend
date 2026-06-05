@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   buildConversationId,
   isGetxapiConversationId,
+  isXChatConversationId,
   resolveGetxapiConversationId,
 } from '@app/shared';
 import { GetxapiRateLimiterService } from './getxapi-rate-limiter.service';
@@ -69,18 +70,25 @@ export class GetxapiService {
       this.config.get<string>('GETXAPI_BASE_URL') ?? 'https://api.getxapi.com';
     const apiKey = this.config.getOrThrow<string>('GETXAPI_API_KEY');
 
+    const body: Record<string, string | number> = {
+      auth_token: params.authToken,
+      conversation_id: params.conversationId,
+      count: params.count ?? 50,
+    };
+    if (params.cursor) {
+      body.cursor = params.cursor;
+    }
+    if (params.conversationToken) {
+      body.conversation_token = params.conversationToken;
+    }
+
     const response = await fetch(`${baseUrl}/twitter/dm/conversation`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        auth_token: params.authToken,
-        conversation_id: params.conversationId,
-        cursor: params.cursor,
-        count: params.count ?? 50,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -126,36 +134,28 @@ export class GetxapiService {
   async fetchInboundConversation(
     params: FetchInboundConversationParams,
   ): Promise<FetchInboundConversationResult> {
-    const resolvedConversationId = resolveGetxapiConversationId(
-      {
-        conversationId: params.conversationId,
-        recipientId: params.recipientId,
-      },
-      params.xUserId,
-    );
+    const attempts = this.buildConversationFetchAttempts(params);
 
-    if (resolvedConversationId) {
+    for (const attempt of attempts) {
       try {
-        const conversation = await this.fetchConversation({
-          authToken: params.authToken,
-          conversationId: resolvedConversationId,
-        });
-        return {
-          conversation,
-          conversationId: resolvedConversationId,
-          recipientId:
-            params.recipientId ??
-            this.extractLatestIncomingPeerId(
-              conversation.messages,
-              params.xUserId,
-            ) ??
-            undefined,
-        };
+        const result = await this.fetchConversationResult(
+          params.authToken,
+          attempt.conversationId,
+          params.xUserId,
+          params.recipientId,
+          params.conversationToken,
+        );
+        this.logger.log(
+          `Fetched /twitter/dm/conversation via ${attempt.label} id=${result.conversationId}`,
+        );
+        return result;
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (!message.includes('(404)')) {
+        if (!this.isConversationNotFoundError(err)) {
           throw err;
         }
+        this.logger.warn(
+          `GetXAPI conversation 404 for ${attempt.label} id=${attempt.conversationId}`,
+        );
       }
     }
 
@@ -164,16 +164,75 @@ export class GetxapiService {
       params.xUserId,
       params.recipientId,
     );
+    return this.fetchConversationResult(
+      params.authToken,
+      fromList.conversationId,
+      params.xUserId,
+      fromList.recipientId ?? params.recipientId,
+      params.conversationToken,
+    );
+  }
+
+  private buildConversationFetchAttempts(
+    params: FetchInboundConversationParams,
+  ): Array<{ conversationId: string; label: string }> {
+    const attempts: Array<{ conversationId: string; label: string }> = [];
+    const seen = new Set<string>();
+
+    const add = (conversationId: string | null | undefined, label: string) => {
+      const trimmed = conversationId?.trim();
+      if (!trimmed || seen.has(trimmed)) {
+        return;
+      }
+      seen.add(trimmed);
+      attempts.push({ conversationId: trimmed, label });
+    };
+
+    const resolved = resolveGetxapiConversationId(
+      {
+        conversationId: params.conversationId,
+        recipientId: params.recipientId,
+      },
+      params.xUserId,
+    );
+
+    if (isXChatConversationId(params.conversationId)) {
+      add(params.conversationId, 'xchat-webhook');
+    }
+    add(resolved, 'resolved');
+    if (!isXChatConversationId(params.conversationId)) {
+      add(params.conversationId, 'webhook');
+    }
+
+    return attempts;
+  }
+
+  private async fetchConversationResult(
+    authToken: string,
+    conversationId: string,
+    xUserId: string,
+    recipientHint?: string,
+    conversationToken?: string,
+  ): Promise<FetchInboundConversationResult> {
     const conversation = await this.fetchConversation({
-      authToken: params.authToken,
-      conversationId: fromList.conversationId,
+      authToken,
+      conversationId,
+      conversationToken,
     });
 
     return {
       conversation,
-      conversationId: fromList.conversationId,
-      recipientId: fromList.recipientId,
+      conversationId: conversation.conversation_id ?? conversationId,
+      recipientId:
+        recipientHint ??
+        this.extractLatestIncomingPeerId(conversation.messages, xUserId) ??
+        undefined,
     };
+  }
+
+  private isConversationNotFoundError(err: unknown): boolean {
+    const message = err instanceof Error ? err.message : String(err);
+    return message.includes('(404)');
   }
 
   private async resolveConversationFromList(
@@ -446,10 +505,10 @@ export class GetxapiService {
   }
 
   extractLatestIncomingPlainText(
-    messages: GetXApiDmMessage[],
+    messages: GetXApiDmMessage[] | undefined,
     xUserId: string,
   ): string | null {
-    for (const message of messages) {
+    for (const message of messages ?? []) {
       const senderId = readMessageField(message, 'senderId', 'sender_id');
       if (!senderId || isSameUser(senderId, xUserId)) {
         continue;
@@ -463,10 +522,10 @@ export class GetxapiService {
   }
 
   extractLatestIncomingPeerId(
-    messages: GetXApiDmMessage[],
+    messages: GetXApiDmMessage[] | undefined,
     xUserId: string,
   ): string | null {
-    for (const message of messages) {
+    for (const message of messages ?? []) {
       const senderId = readMessageField(message, 'senderId', 'sender_id');
       if (senderId && !isSameUser(senderId, xUserId)) {
         return senderId;

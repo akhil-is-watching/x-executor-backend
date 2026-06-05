@@ -4,6 +4,8 @@ export interface InboundDmWebhookContext {
   conversationId: string;
   /** Omitted when XChat webhooks only include conversationId + encoded payload. */
   recipientId?: string;
+  /** XChat session token for GetXAPI /twitter/dm/conversation decryption. */
+  conversationToken?: string;
   inboundMessageId?: string;
   inboundTextFromWebhook?: string;
 }
@@ -20,6 +22,13 @@ export function buildConversationId(userIdA: string, userIdB: string): string {
 /** GetXAPI /twitter/dm/conversation expects `3012852462-1345154135381794816` style ids. */
 export function isGetxapiConversationId(conversationId: string): boolean {
   return /^\d+-\d+$/.test(conversationId);
+}
+
+/** XChat webhooks use colon ids or other non-legacy conversation ids. */
+export function isXChatConversationId(conversationId: string): boolean {
+  return (
+    conversationId.includes(':') || !isGetxapiConversationId(conversationId)
+  );
 }
 
 /** XChat uses `userId:peerId` (colon). Returns the participant that is not the bot. */
@@ -139,6 +148,13 @@ function readSenderFromSigningKeys(
   return undefined;
 }
 
+function readConversationToken(
+  event: Record<string, unknown>,
+): string | undefined {
+  const token = event.conversation_token ?? event.conversationToken;
+  return typeof token === 'string' && token.length > 0 ? token : undefined;
+}
+
 function resolveXChatPeerAndConversation(
   event: Record<string, unknown>,
   xUserId: string,
@@ -172,6 +188,7 @@ function readInboundChatEvent(
   xUserId: string,
   payloadConversationId?: string,
 ): InboundDmWebhookContext | null {
+  const conversationToken = readConversationToken(event);
   const senderRaw =
     event.sender_id ??
     event.senderId ??
@@ -186,6 +203,7 @@ function readInboundChatEvent(
       return {
         conversationId: buildConversationId(xUserId, senderId),
         recipientId: senderId,
+        conversationToken,
         inboundMessageId:
           messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
         inboundTextFromWebhook: undefined,
@@ -201,6 +219,7 @@ function readInboundChatEvent(
   if (fromConversation) {
     return {
       ...fromConversation,
+      conversationToken,
       inboundMessageId:
         messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
       inboundTextFromWebhook: undefined,

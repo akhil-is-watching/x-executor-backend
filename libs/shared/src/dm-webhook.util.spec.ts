@@ -176,6 +176,7 @@ describe('dm-webhook.util', () => {
           id: '60d9a817-bbea-43c7-84b2-c9b2345718a2',
           sender_id: '1390625949587173378',
           conversation_id: '1390625949587173378:1390625949587173378',
+          conversation_token: 'jwt-token',
           encoded_event: 'CwAB...',
           message_event_signature: {
             public_key_version: '1774607208379',
@@ -189,6 +190,7 @@ describe('dm-webhook.util', () => {
 
     expect(parseInboundDmFromWebhook(raw, '1390625949587173378')).toEqual({
       conversationId: '1390625949587173378:1390625949587173378',
+      conversationToken: 'jwt-token',
       inboundMessageId: '60d9a817-bbea-43c7-84b2-c9b2345718a2',
       inboundTextFromWebhook: undefined,
     });

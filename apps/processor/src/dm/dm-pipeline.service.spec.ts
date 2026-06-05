@@ -170,6 +170,7 @@ describe('DmPipelineService', () => {
       xUserId: '3012852462',
       conversationId: 'xchat-conv-abc',
       recipientId: undefined,
+      conversationToken: undefined,
     });
     expect(mockNats.publishJson).toHaveBeenCalledWith(
       NATS_SUBJECT_DM_REPLY_READY,

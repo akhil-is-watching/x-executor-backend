@@ -14,6 +14,14 @@ export class ConnectionWebhook {
   @Prop({ required: true })
   xWebhookConfigId!: string;
 
+  /** X Activity API dm.received subscription ID */
+  @Prop()
+  dmSubscriptionId?: string;
+
+  /** X Activity API chat.received subscription ID */
+  @Prop()
+  chatSubscriptionId?: string;
+
   @Prop({ default: () => new Date() })
   subscribedAt!: Date;
 

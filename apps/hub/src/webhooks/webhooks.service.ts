@@ -46,7 +46,7 @@ export class WebhooksService implements OnModuleInit {
   }
 
   /**
-   * Marks the connection subscribed to the app-wide X webhook (Account Activity).
+   * Marks the connection subscribed to the app-wide X webhook (X Activity API).
    */
   async subscribeForConnection(
     connection: XConnectionDocument,
@@ -58,20 +58,25 @@ export class WebhooksService implements OnModuleInit {
 
     let xWebhookConfigId: string | undefined;
     let subscribed = false;
+    let dmSubscriptionId: string | undefined;
+    let chatSubscriptionId: string | undefined;
 
     if (this.xWebhooksApi.isEnabled()) {
       try {
         xWebhookConfigId = await this.xWebhooksApi.ensureAppWebhookRegistered();
-        await this.xWebhooksApi.subscribeUser(
+        const subscriptionIds = await this.xWebhooksApi.subscribeUser(
           xWebhookConfigId,
+          connection.xUserId,
           accessToken,
           accessTokenSecret,
         );
+        dmSubscriptionId = subscriptionIds.dmSubscriptionId;
+        chatSubscriptionId = subscriptionIds.chatSubscriptionId;
         subscribed = true;
-        const userIds = await this.xWebhooksApi.listSubscriptions(xWebhookConfigId);
+        const subscriptions = await this.xWebhooksApi.listSubscriptions();
         this.logger.log(
           `@${connection.xUsername} subscribed to webhook ${xWebhookConfigId}; ` +
-            `X reports ${userIds.length} subscription(s): [${userIds.join(', ')}]`,
+            `X reports ${subscriptions.length} active Activity subscription(s)`,
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -86,6 +91,8 @@ export class WebhooksService implements OnModuleInit {
         connectionId: connection._id,
         orgId: connection.orgId,
         xWebhookConfigId,
+        dmSubscriptionId,
+        chatSubscriptionId,
         subscribedAt: new Date(),
         active: true,
       });
@@ -105,11 +112,14 @@ export class WebhooksService implements OnModuleInit {
       revokedAt: null,
     });
 
-    if (active?.xWebhookConfigId && this.xWebhooksApi.isEnabled()) {
+    if (
+      (active?.dmSubscriptionId || active?.chatSubscriptionId) &&
+      this.xWebhooksApi.isEnabled()
+    ) {
       try {
         await this.xWebhooksApi.unsubscribeUser(
-          active.xWebhookConfigId,
-          connection.xUserId,
+          active.dmSubscriptionId,
+          active.chatSubscriptionId,
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

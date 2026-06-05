@@ -19,6 +19,7 @@ describe('WebhooksService', () => {
     isEnabled: jest.fn(() => false),
     ensureAppWebhookRegistered: jest.fn(),
     subscribeUser: jest.fn(),
+    listSubscriptions: jest.fn(),
     unsubscribeUser: jest.fn(),
   };
 
@@ -85,5 +86,74 @@ describe('WebhooksService', () => {
     );
     expect(result.subscribed).toBe(false);
     expect(webhookModel.create).not.toHaveBeenCalled();
+  });
+
+  it('persists XAA subscription IDs when X registration succeeds', async () => {
+    mockXWebhooksApi.isEnabled.mockReturnValue(true);
+    mockXWebhooksApi.ensureAppWebhookRegistered.mockResolvedValue('wh-1');
+    mockXWebhooksApi.subscribeUser.mockResolvedValue({
+      dmSubscriptionId: 'sub-dm-1',
+      chatSubscriptionId: 'sub-chat-1',
+    });
+    mockXWebhooksApi.listSubscriptions.mockResolvedValue([
+      { subscription_id: 'sub-dm-1', event_type: 'dm.received' },
+      { subscription_id: 'sub-chat-1', event_type: 'chat.received' },
+    ]);
+    webhookModel.findOne.mockResolvedValue(null);
+
+    const connectionId = new Types.ObjectId();
+    const orgId = new Types.ObjectId();
+    const connection = {
+      _id: connectionId,
+      orgId,
+      xUserId: '3012852462',
+      xUsername: 'botuser',
+      accessTokenEnc: 'enc',
+    } as never;
+
+    const result = await service.subscribeForConnection(
+      connection,
+      'token',
+      'token-secret',
+    );
+
+    expect(mockXWebhooksApi.subscribeUser).toHaveBeenCalledWith(
+      'wh-1',
+      '3012852462',
+      'token',
+      'token-secret',
+    );
+    expect(webhookModel.create).toHaveBeenCalledWith({
+      connectionId,
+      orgId,
+      xWebhookConfigId: 'wh-1',
+      dmSubscriptionId: 'sub-dm-1',
+      chatSubscriptionId: 'sub-chat-1',
+      subscribedAt: expect.any(Date),
+      active: true,
+    });
+    expect(result.subscribed).toBe(true);
+    expect(result.xWebhookConfigId).toBe('wh-1');
+  });
+
+  it('unsubscribes using stored XAA subscription IDs on revoke', async () => {
+    mockXWebhooksApi.isEnabled.mockReturnValue(true);
+    webhookModel.findOne.mockResolvedValue({
+      dmSubscriptionId: 'sub-dm-1',
+      chatSubscriptionId: 'sub-chat-1',
+    });
+
+    const connection = {
+      _id: new Types.ObjectId(),
+      xUserId: '3012852462',
+      xUsername: 'botuser',
+    } as never;
+
+    await service.revokeForConnection(connection);
+
+    expect(mockXWebhooksApi.unsubscribeUser).toHaveBeenCalledWith(
+      'sub-dm-1',
+      'sub-chat-1',
+    );
   });
 });

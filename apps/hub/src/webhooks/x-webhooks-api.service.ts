@@ -1,6 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TwitterApi } from 'twitter-api-v2';
+import {
+  parseActivitySubscriptionId,
+  type XActivityDmInboundEventType,
+  type XActivitySubscription,
+  type XActivitySubscriptionCreateRequest,
+  type XActivitySubscriptionCreateResponse,
+  type XActivitySubscriptionIds,
+  type XActivitySubscriptionListResponse,
+} from './x-activity.types';
+
+export type { XActivitySubscriptionIds } from './x-activity.types';
 
 interface XWebhookConfig {
   id: string;
@@ -72,14 +83,15 @@ export class XWebhooksApiService {
   }
 
   /**
-   * Subscribe a user to Account Activity events.
-   * X requires OAuth 1.0a (3-legged) for POST subscriptions/all.
+   * Subscribe a user to X Activity API DM events (dm.received + chat.received).
+   * Requires OAuth 1.0a user tokens for private event types.
    */
   async subscribeUser(
     xWebhookConfigId: string,
+    xUserId: string,
     accessToken: string,
     accessTokenSecret: string,
-  ): Promise<void> {
+  ): Promise<XActivitySubscriptionIds> {
     const appKey = this.config.getOrThrow<string>('X_API_KEY');
     const appSecret = this.config.getOrThrow<string>('X_API_KEY_SECRET');
     const userClient = new TwitterApi({
@@ -90,70 +102,113 @@ export class XWebhooksApiService {
     });
 
     try {
-      const res = await userClient.v2.post<{
-        data?: { subscribed?: boolean };
-      }>(
-        `account_activity/webhooks/${xWebhookConfigId}/subscriptions/all`,
+      const dmSubscriptionId = await this.createActivitySubscription(
+        userClient,
+        xWebhookConfigId,
+        xUserId,
+        'dm.received',
       );
+      const chatSubscriptionId = await this.createActivitySubscription(
+        userClient,
+        xWebhookConfigId,
+        xUserId,
+        'chat.received',
+      );
+
       this.logger.log(
-        `X subscription created for webhook ${xWebhookConfigId}: ${JSON.stringify(res.data ?? res)}`,
+        `X Activity subscriptions for user ${xUserId} on webhook ${xWebhookConfigId}: ` +
+          `dm=${dmSubscriptionId}, chat=${chatSubscriptionId}`,
       );
+
+      return { dmSubscriptionId, chatSubscriptionId };
     } catch (err: unknown) {
       const xData = (err as Record<string, unknown>)['data'];
       const detail = err instanceof Error ? err.message : String(err);
       const status = (err as { code?: number })?.code;
       if (status === 403) {
         throw new Error(
-          `X account activity subscription failed (403 Forbidden). ` +
-            `Check that your X app has "Account Activity API" product access in the Developer Portal ` +
-            `(https://docs.x.com/x-api/account-activity/quickstart). data: ${JSON.stringify(xData ?? '')}`,
+          `X Activity API subscription failed (403 Forbidden). ` +
+            `Check that your X app has X Activity API access in the Developer Portal ` +
+            `(https://docs.x.com/x-api/activity/introduction). data: ${JSON.stringify(xData ?? '')}`,
         );
       }
       throw new Error(
-        `X account activity subscription failed: ${detail} | data: ${JSON.stringify(xData ?? '')}`,
+        `X Activity API subscription failed: ${detail} | data: ${JSON.stringify(xData ?? '')}`,
       );
     }
   }
 
-  /** Lists user IDs subscribed to a webhook (app bearer). */
-  async listSubscriptions(xWebhookConfigId: string): Promise<string[]> {
+  /** Lists active X Activity API subscriptions (app bearer). */
+  async listSubscriptions(): Promise<XActivitySubscription[]> {
     const appClient = await this.getAppOnlyClient();
     try {
-      const res = await appClient.v2.get<{
-        data?: { subscriptions?: { user_id: string }[] };
-      }>(
-        `account_activity/webhooks/${xWebhookConfigId}/subscriptions/all/list`,
+      const res = await appClient.v2.get<XActivitySubscriptionListResponse>(
+        'activity/subscriptions',
       );
-      return res.data?.subscriptions?.map((s) => s.user_id) ?? [];
+      return res.data ?? [];
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`X list subscriptions failed: ${message}`);
+      this.logger.warn(`X Activity list subscriptions failed: ${message}`);
       return [];
     }
   }
 
-  /**
-   * Remove a user's Account Activity subscription.
-   * X requires OAuth 2.0 Application-Only (app bearer) for DELETE subscriptions/:user_id/all.
-   */
+  /** Remove X Activity API subscriptions by subscription ID (app bearer). */
   async unsubscribeUser(
-    xWebhookConfigId: string,
-    xUserId: string,
+    dmSubscriptionId: string | undefined,
+    chatSubscriptionId: string | undefined,
   ): Promise<void> {
     const appClient = await this.getAppOnlyClient();
-    try {
-      await appClient.v2.delete(
-        `account_activity/webhooks/${xWebhookConfigId}/subscriptions/${xUserId}/all`,
-      );
-    } catch (err: unknown) {
-      const status = (err as { code?: number })?.code;
-      if (status === 404) return;
-      const xData = (err as Record<string, unknown>)['data'];
-      const detail = err instanceof Error ? err.message : String(err);
+    const ids = [dmSubscriptionId, chatSubscriptionId].filter(
+      (id): id is string => Boolean(id),
+    );
+
+    for (const subscriptionId of ids) {
+      try {
+        await appClient.v2.delete(`activity/subscriptions/${subscriptionId}`);
+        this.logger.log(`X Activity subscription deleted: ${subscriptionId}`);
+      } catch (err: unknown) {
+        const status = (err as { code?: number })?.code;
+        if (status === 404) {
+          continue;
+        }
+        const xData = (err as Record<string, unknown>)['data'];
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `X Activity API unsubscribe failed for ${subscriptionId}: ${detail} | data: ${JSON.stringify(xData ?? '')}`,
+        );
+      }
+    }
+  }
+
+  private async createActivitySubscription(
+    userClient: TwitterApi,
+    xWebhookConfigId: string,
+    xUserId: string,
+    eventType: XActivityDmInboundEventType,
+  ): Promise<string> {
+    const body: XActivitySubscriptionCreateRequest = {
+      event_type: eventType,
+      filter: {
+        user_id: xUserId,
+        direction: 'inbound',
+      },
+      webhook_id: xWebhookConfigId,
+    };
+
+    const res = await userClient.v2.post<XActivitySubscriptionCreateResponse>(
+      'activity/subscriptions',
+      body,
+    );
+
+    const subscriptionId = parseActivitySubscriptionId(res);
+    if (!subscriptionId) {
       throw new Error(
-        `X account activity unsubscribe failed: ${detail} | data: ${JSON.stringify(xData ?? '')}`,
+        `X Activity API create subscription (${eventType}) returned no subscription_id`,
       );
     }
+
+    return subscriptionId;
   }
 
   private async getAppOnlyClient(): Promise<TwitterApi> {

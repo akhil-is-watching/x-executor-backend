@@ -17,6 +17,9 @@ export const X_WEBHOOK_METADATA_KEYS = new Set([
   'sender_id',
   'source',
   'recipient_id',
+  'conversation_id',
+  'apps',
+  'users',
 ]);
 
 export function extractXWebhookEventTypes(

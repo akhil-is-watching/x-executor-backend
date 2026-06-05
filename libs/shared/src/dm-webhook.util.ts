@@ -48,15 +48,45 @@ function readMessageCreate(event: Record<string, unknown>) {
   };
 }
 
-export function parseInboundDmFromWebhook(
-  payload: Record<string, unknown>,
+function readInboundChatEvent(
+  event: Record<string, unknown>,
   xUserId: string,
+  payloadConversationId?: string,
 ): InboundDmWebhookContext | null {
-  const events = payload.direct_message_events;
-  if (!Array.isArray(events) || events.length === 0) {
+  const senderRaw = event.sender_id ?? event.senderId;
+  if (senderRaw === undefined || senderRaw === null) {
+    return null;
+  }
+  const senderId = String(senderRaw);
+  if (senderId === xUserId) {
     return null;
   }
 
+  const conversationIdFromEvent =
+    typeof event.conversation_id === 'string'
+      ? event.conversation_id
+      : typeof event.dm_conversation_id === 'string'
+        ? event.dm_conversation_id
+        : undefined;
+  const conversationId =
+    conversationIdFromEvent ??
+    payloadConversationId ??
+    buildConversationId(xUserId, senderId);
+
+  return {
+    conversationId,
+    recipientId: senderId,
+    inboundMessageId:
+      event.id !== undefined ? String(event.id) : undefined,
+    inboundTextFromWebhook: undefined,
+  };
+}
+
+function parseLegacyDmEvents(
+  events: unknown[],
+  xUserId: string,
+  payloadConversationId?: string,
+): InboundDmWebhookContext | null {
   for (const rawEvent of events) {
     const event = asRecord(rawEvent);
     if (!event || event.type !== 'message_create') {
@@ -68,17 +98,13 @@ export function parseInboundDmFromWebhook(
       continue;
     }
 
-    const peerId = message.senderId;
-
-    const conversationIdFromPayload = payload.conversation_id;
     const conversationId =
-      typeof conversationIdFromPayload === 'string'
-        ? conversationIdFromPayload
-        : buildConversationId(xUserId, peerId);
+      payloadConversationId ??
+      buildConversationId(xUserId, message.senderId);
 
     return {
       conversationId,
-      recipientId: peerId,
+      recipientId: message.senderId,
       inboundMessageId: message.messageId,
       inboundTextFromWebhook: message.text,
     };
@@ -87,6 +113,55 @@ export function parseInboundDmFromWebhook(
   return null;
 }
 
+function parseChatEvents(
+  events: unknown[],
+  xUserId: string,
+  payloadConversationId?: string,
+): InboundDmWebhookContext | null {
+  for (const rawEvent of events) {
+    const event = asRecord(rawEvent);
+    if (!event) {
+      continue;
+    }
+
+    const parsed = readInboundChatEvent(event, xUserId, payloadConversationId);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+export function parseInboundDmFromWebhook(
+  payload: Record<string, unknown>,
+  xUserId: string,
+): InboundDmWebhookContext | null {
+  const payloadConversationId =
+    typeof payload.conversation_id === 'string'
+      ? payload.conversation_id
+      : undefined;
+
+  const legacyEvents = payload.direct_message_events;
+  if (Array.isArray(legacyEvents) && legacyEvents.length > 0) {
+    return parseLegacyDmEvents(legacyEvents, xUserId, payloadConversationId);
+  }
+
+  const chatEvents = payload.x_chat_events;
+  if (Array.isArray(chatEvents) && chatEvents.length > 0) {
+    return parseChatEvents(chatEvents, xUserId, payloadConversationId);
+  }
+
+  return null;
+}
+
 export function isDirectMessageWebhook(eventTypes: string[]): boolean {
   return eventTypes.includes('direct_message_events');
+}
+
+/** Legacy AAA DMs or XAA XChat (`x_chat_events`). */
+export function isInboundDmWebhook(eventTypes: string[]): boolean {
+  return (
+    isDirectMessageWebhook(eventTypes) || eventTypes.includes('x_chat_events')
+  );
 }

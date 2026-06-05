@@ -140,4 +140,32 @@ describe('DmPipelineService', () => {
     });
     expect(mockNats.publishJson).not.toHaveBeenCalled();
   });
+
+  it('publishes x.dm.reply.ready for inbound XChat webhooks', async () => {
+    await service.handleWebhookEvent({
+      ...baseEvent,
+      eventTypes: ['x_chat_events'],
+      payload: {
+        conversation_id: 'xchat-conv-abc',
+        x_chat_events: [
+          {
+            id: 'chat-msg-1',
+            sender_id: '1345154135381794816',
+          },
+        ],
+      },
+    });
+
+    expect(mockGetxapi.fetchConversation).toHaveBeenCalledWith({
+      authToken: 'plain-auth-token',
+      conversationId: 'xchat-conv-abc',
+    });
+    expect(mockNats.publishJson).toHaveBeenCalledWith(
+      NATS_SUBJECT_DM_REPLY_READY,
+      expect.objectContaining({
+        conversationId: 'xchat-conv-abc',
+        recipientId: '1345154135381794816',
+      }),
+    );
+  });
 });

@@ -1,6 +1,7 @@
 import {
   buildConversationId,
   isDirectMessageWebhook,
+  isInboundDmWebhook,
   parseInboundDmFromWebhook,
 } from './dm-webhook.util';
 
@@ -13,6 +14,12 @@ describe('dm-webhook.util', () => {
   it('detects direct message webhooks', () => {
     expect(isDirectMessageWebhook(['direct_message_events'])).toBe(true);
     expect(isDirectMessageWebhook(['tweet_create_events'])).toBe(false);
+  });
+
+  it('detects inbound XChat webhooks', () => {
+    expect(isInboundDmWebhook(['x_chat_events'])).toBe(true);
+    expect(isInboundDmWebhook(['direct_message_events'])).toBe(true);
+    expect(isInboundDmWebhook(['tweet_create_events'])).toBe(false);
   });
 
   it('parses inbound message_create events', () => {
@@ -55,5 +62,24 @@ describe('dm-webhook.util', () => {
     };
 
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toBeNull();
+  });
+
+  it('parses inbound XChat events using conversation_id and sender_id', () => {
+    const payload = {
+      conversation_id: 'xchat-conv-abc',
+      x_chat_events: [
+        {
+          id: 'chat-msg-1',
+          sender_id: '1345154135381794816',
+        },
+      ],
+    };
+
+    expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
+      conversationId: 'xchat-conv-abc',
+      recipientId: '1345154135381794816',
+      inboundMessageId: 'chat-msg-1',
+      inboundTextFromWebhook: undefined,
+    });
   });
 });

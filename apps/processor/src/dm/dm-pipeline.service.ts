@@ -7,7 +7,7 @@ import { NATS_SUBJECT_DM_REPLY_READY, NatsJsService } from '@app/nats-js';
 import { GetxapiService } from '@app/getxapi';
 import { LlmService } from '@app/llm';
 import {
-  isDirectMessageWebhook,
+  isInboundDmWebhook,
   parseInboundDmFromWebhook,
   type XDmReplyReadyEvent,
   type XWebhookReceivedEvent,
@@ -39,15 +39,18 @@ export class DmPipelineService {
   ) {}
 
   async handleWebhookEvent(event: XWebhookReceivedEvent): Promise<void> {
-    if (!isDirectMessageWebhook(event.eventTypes)) {
+    if (!isInboundDmWebhook(event.eventTypes)) {
       this.logger.log(
         `Skipping non-DM webhook eventId=${event.eventId} ` +
-          `(processor only handles direct_message_events; got [${event.eventTypes.join(', ')}])`,
+          `(processor only handles inbound DM/XChat; got [${event.eventTypes.join(', ')}])`,
       );
       return;
     }
 
-    this.logger.log(`Processing DM webhook eventId=${event.eventId}`);
+    const isXChat = event.eventTypes.includes('x_chat_events');
+    this.logger.log(
+      `Processing ${isXChat ? 'XChat' : 'legacy DM'} webhook eventId=${event.eventId}`,
+    );
 
     const dmContext = parseInboundDmFromWebhook(event.payload, event.xUserId);
     if (!dmContext) {

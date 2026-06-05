@@ -34,11 +34,17 @@ export interface XActivitySubscription {
   webhook_id?: string;
 }
 
+/** Full HTTP body (rare — twitter-api-v2 v2.post usually returns unwrapped `data`). */
 export interface XActivitySubscriptionCreateResponse {
-  data?: {
-    subscription?: XActivitySubscription;
-    total_subscriptions_for_instance_id?: number;
-  };
+  data?:
+    | XActivitySubscription
+    | XActivitySubscription[]
+    | {
+        subscription?: XActivitySubscription;
+        total_subscriptions_for_instance_id?: number;
+      };
+  subscription?: XActivitySubscription;
+  subscription_id?: string;
   errors?: unknown[];
   meta?: { total_subscriptions?: number };
 }
@@ -54,16 +60,40 @@ export interface XActivitySubscriptionIds {
   chatSubscriptionId: string;
 }
 
-/** Extract subscription_id from create response (snake_case wire format). */
-export function parseActivitySubscriptionId(
-  response: XActivitySubscriptionCreateResponse,
-): string | null {
-  const subscription = response.data?.subscription;
-  if (!subscription) {
+function readSubscriptionId(value: unknown): string | null {
+  const record = value as Record<string, unknown> | null;
+  if (!record || typeof record !== 'object') {
     return null;
   }
-  if (typeof subscription.subscription_id === 'string') {
-    return subscription.subscription_id;
+  if (typeof record.subscription_id === 'string') {
+    return record.subscription_id;
+  }
+  const nested = record.subscription;
+  if (nested && typeof nested === 'object') {
+    const nestedId = (nested as Record<string, unknown>).subscription_id;
+    if (typeof nestedId === 'string') {
+      return nestedId;
+    }
   }
   return null;
+}
+
+/**
+ * Extract subscription_id from create response.
+ * twitter-api-v2 `v2.post` returns the unwrapped top-level `data` field.
+ */
+export function parseActivitySubscriptionId(
+  response: XActivitySubscriptionCreateResponse | XActivitySubscription,
+): string | null {
+  const direct = readSubscriptionId(response);
+  if (direct) {
+    return direct;
+  }
+
+  const wrapped = response as XActivitySubscriptionCreateResponse;
+  const data = wrapped.data;
+  if (Array.isArray(data)) {
+    return readSubscriptionId(data[0]);
+  }
+  return readSubscriptionId(data);
 }

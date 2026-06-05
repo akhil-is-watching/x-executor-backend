@@ -142,9 +142,12 @@ export class XWebhooksApiService {
   async listSubscriptions(): Promise<XActivitySubscription[]> {
     const appClient = await this.getAppOnlyClient();
     try {
-      const res = await appClient.v2.get<XActivitySubscriptionListResponse>(
-        'activity/subscriptions',
-      );
+      const res = await appClient.v2.get<
+        XActivitySubscription[] | XActivitySubscriptionListResponse
+      >('activity/subscriptions');
+      if (Array.isArray(res)) {
+        return res;
+      }
       return res.data ?? [];
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -19,6 +19,7 @@ import {
 } from './config/consumer-secret.util';
 import { IncomingService } from './incoming/incoming.service';
 import { createCrcResponse, verifyWebhookSignature } from './x-webhook.crypto';
+import { isXActivityWebhookPayload } from '@app/shared';
 
 @Controller()
 export class WebhookController {
@@ -81,8 +82,16 @@ export class WebhookController {
     }
 
     const eventKeys = Object.keys(parsed).filter((k) => k !== 'for_user_id');
+    const xaaEventType =
+      isXActivityWebhookPayload(parsed) &&
+      parsed.data &&
+      typeof parsed.data === 'object' &&
+      !Array.isArray(parsed.data)
+        ? String((parsed.data as Record<string, unknown>).event_type ?? 'unknown')
+        : 'n/a';
     this.logger.log(
-      `X webhook payload for_user_id=${String(parsed.for_user_id ?? 'missing')} keys=[${eventKeys.join(', ')}]`,
+      `X webhook payload for_user_id=${String(parsed.for_user_id ?? 'missing')} ` +
+        `xaa_event_type=${xaaEventType} keys=[${eventKeys.join(', ')}]`,
     );
 
     const result = await this.incomingService.processIncomingPayload(parsed);

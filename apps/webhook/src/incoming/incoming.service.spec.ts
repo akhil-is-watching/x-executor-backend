@@ -98,6 +98,38 @@ describe('IncomingService', () => {
       );
     });
 
+    it('normalizes XAA dm.received payloads before publishing', async () => {
+      const rawPayload = {
+        data: {
+          event_type: 'dm.received',
+          filter: { user_id: 'x-user-1' },
+          payload: {
+            type: 'message_create',
+            id: '1',
+            message_create: {
+              sender_id: 'peer-1',
+              target: { recipient_id: 'x-user-1' },
+              message_data: { text: 'hi' },
+            },
+          },
+        },
+      };
+
+      const result = await service.processIncomingPayload(rawPayload);
+
+      expect(result.eventIds).toHaveLength(1);
+      expect(mockNatsJs.publishJson).toHaveBeenCalledWith(
+        NATS_SUBJECT_WEBHOOK_RECEIVED,
+        expect.objectContaining({
+          eventTypes: ['direct_message_events'],
+          payload: {
+            for_user_id: 'x-user-1',
+            direct_message_events: [rawPayload.data.payload],
+          },
+        }),
+      );
+    });
+
     it('throws when no active connection', async () => {
       connectionModel.find.mockResolvedValue([]);
       await expect(

@@ -10,6 +10,8 @@ import { randomUUID } from 'crypto';
 import { NatsJsService, NATS_SUBJECT_WEBHOOK_RECEIVED } from '@app/nats-js';
 import {
   extractXWebhookEventTypes,
+  normalizeXWebhookPayload,
+  isXActivityWebhookPayload,
   type XWebhookReceivedEvent,
 } from '@app/shared';
 import {
@@ -34,10 +36,22 @@ export class IncomingService {
   ) {}
 
   async processIncomingPayload(
-    payload: Record<string, unknown>,
+    rawPayload: Record<string, unknown>,
   ): Promise<ProcessXWebhookResult> {
+    const payload = normalizeXWebhookPayload(rawPayload);
+    if (isXActivityWebhookPayload(rawPayload)) {
+      this.logger.log(
+        `Normalized XAA webhook event_type=${String(
+          (rawPayload.data as Record<string, unknown>)?.event_type ?? 'unknown',
+        )} → for_user_id=${String(payload.for_user_id ?? 'missing')}`,
+      );
+    }
+
     const forUserId = payload.for_user_id;
     if (forUserId === undefined || forUserId === null) {
+      this.logger.warn(
+        `Unrecognized webhook payload shape keys=[${Object.keys(rawPayload).join(', ')}]`,
+      );
       throw new BadRequestException('Missing for_user_id in webhook payload');
     }
 

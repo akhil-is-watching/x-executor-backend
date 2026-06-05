@@ -12,6 +12,7 @@ export type XActivityDmInboundEventType = 'dm.received' | 'chat.received';
 
 export interface XActivitySubscriptionFilter {
   user_id: string;
+  /** Not valid for dm.received / chat.received — event type already scopes direction. */
   direction?: 'inbound' | 'outbound';
   keyword?: string;
 }

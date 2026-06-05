@@ -10,7 +10,7 @@ describe('parseActivitySubscriptionId', () => {
         subscription: {
           subscription_id: 'sub-123',
           event_type: 'dm.received',
-          filter: { user_id: '3012852462', direction: 'inbound' },
+          filter: { user_id: '3012852462' },
         },
       },
     };

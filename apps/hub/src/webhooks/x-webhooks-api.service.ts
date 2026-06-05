@@ -191,7 +191,6 @@ export class XWebhooksApiService {
       event_type: eventType,
       filter: {
         user_id: xUserId,
-        direction: 'inbound',
       },
       webhook_id: xWebhookConfigId,
     };

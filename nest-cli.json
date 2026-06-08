@@ -11,15 +11,13 @@
   "monorepo": true,
   "root": "apps/x-executor",
   "projects": {
-    "hub": {
+    "analytics": {
       "type": "application",
-      "root": "apps/hub",
+      "root": "apps/analytics",
       "entryFile": "main",
-      "sourceRoot": "apps/hub/src",
+      "sourceRoot": "apps/analytics/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/hub/tsconfig.app.json",
-        "webpack": true,
-        "webpackConfigPath": "webpack.config.js"
+        "tsConfigPath": "apps/analytics/tsconfig.app.json"
       }
     },
     "getxapi": {
@@ -29,6 +27,17 @@
       "sourceRoot": "libs/getxapi/src",
       "compilerOptions": {
         "tsConfigPath": "libs/getxapi/tsconfig.lib.json"
+      }
+    },
+    "hub": {
+      "type": "application",
+      "root": "apps/hub",
+      "entryFile": "main",
+      "sourceRoot": "apps/hub/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/hub/tsconfig.app.json",
+        "webpack": true,
+        "webpackConfigPath": "webpack.config.js"
       }
     },
     "llm": {
@@ -67,6 +76,15 @@
       "sourceRoot": "libs/redis/src",
       "compilerOptions": {
         "tsConfigPath": "libs/redis/tsconfig.lib.json"
+      }
+    },
+    "scheduler": {
+      "type": "application",
+      "root": "apps/scheduler",
+      "entryFile": "main",
+      "sourceRoot": "apps/scheduler/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/scheduler/tsconfig.app.json"
       }
     },
     "sender": {

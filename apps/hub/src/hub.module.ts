@@ -8,9 +8,11 @@ import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { InvitesModule } from './invites/invites.module';
 import { OAuthModule } from './oauth/oauth.module';
+import { NatsJsModule } from '@app/nats-js';
 import { ConnectionsModule } from './connections/connections.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { CryptoModule } from './crypto/crypto.module';
+import { CampaignsModule } from './campaigns/campaigns.module';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { CryptoModule } from './crypto/crypto.module';
       }),
     }),
     RedisModule,
+    NatsJsModule,
     CryptoModule,
     AuthModule,
     OrganizationsModule,
@@ -32,6 +35,7 @@ import { CryptoModule } from './crypto/crypto.module';
     OAuthModule,
     ConnectionsModule,
     WebhooksModule,
+    CampaignsModule,
   ],
   controllers: [HubController],
 })

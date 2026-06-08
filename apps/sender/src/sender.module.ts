@@ -8,6 +8,8 @@ import { validateEnv } from './config/validate-env';
 import { CryptoModule } from './crypto/crypto.module';
 import { DmSenderService } from './dm/dm-sender.service';
 import { ReplyConsumerService } from './dm/reply-consumer.service';
+import { CampaignConsumerService } from './campaign/campaign-consumer.service';
+import { CampaignDmSenderService } from './campaign/campaign-dm-sender.service';
 import {
   XConnection,
   XConnectionSchema,
@@ -35,6 +37,11 @@ import { SenderController } from './sender.controller';
     CryptoModule,
   ],
   controllers: [SenderController],
-  providers: [DmSenderService, ReplyConsumerService],
+  providers: [
+    DmSenderService,
+    ReplyConsumerService,
+    CampaignDmSenderService,
+    CampaignConsumerService,
+  ],
 })
 export class SenderModule {}

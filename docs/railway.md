@@ -1,12 +1,15 @@
 # Railway deployment
 
-This monorepo runs three NestJS apps plus a NATS server from one repository. Railway does **not** support multiple services in a single `railway.toml`; create **one Railway service per row** and point each at its config file under `docs/railway/`.
+This monorepo runs multiple NestJS apps plus a NATS server from one repository. Railway does **not** support multiple services in a single `railway.toml`; create **one Railway service per row** and point each at its config file under `docs/railway/`.
 
 | Service   | Config file                            | Deploy |
 |-----------|----------------------------------------|--------|
 | Hub       | `/docs/railway/hub/railway.toml`       | `yarn start:hub:prod` |
 | Webhook   | `/docs/railway/webhook/railway.toml`   | `yarn start:webhook:prod` |
 | Processor | `/docs/railway/processor/railway.toml` | `yarn start:processor:prod` |
+| Sender    | `/docs/railway/sender/railway.toml`    | `yarn start:sender:prod` |
+| Scheduler | `/docs/railway/scheduler/railway.toml` | `yarn start:scheduler:prod` |
+| Analytics | `/docs/railway/analytics/railway.toml` | `yarn start:analytics:prod` |
 | NATS      | `/docs/railway/nats-js/railway.toml`   | Docker (`nats:2.10-alpine` + JetStream) |
 
 Environment templates live in `docs/env/`:
@@ -16,6 +19,9 @@ Environment templates live in `docs/env/`:
 - `hub.env.example` — OAuth, JWT, public URLs
 - `webhook.env.example` — webhook base URL, X secret
 - `processor.env.example` — GetXAPI, OpenAI, encryption key
+- `sender.env.example` — GetXAPI, encryption key
+- `scheduler.env.example` — campaign send pacing limits
+- `analytics.env.example` — campaign stats consumer
 
 For local development, the root `.env.example` still lists all variables in one file.
 
@@ -28,9 +34,9 @@ For local development, the root `.env.example` still lists all variables in one 
    - Redis → `REDIS_URL` on **Hub** and **Processor** (see [Redis auth](#redis-auth) below)
    - NATS → deploy with `docs/railway/nats-js/railway.toml` (see below)
 
-3. **Create four services** (NATS, Hub, Webhook, Processor). For each:
+3. **Create services** (NATS, Hub, Webhook, Processor, Sender, Scheduler, Analytics). For each:
    - **Settings → Config file**: set the absolute path from the table above (paths are from repo root, not a root-directory override).
-   - **Settings → Networking**: generate a public domain for **Hub** and **Webhook** only. Keep **NATS**, **Processor**, and optionally MongoDB/Redis private.
+   - **Settings → Networking**: generate a public domain for **Hub** and **Webhook** only. Keep **NATS**, **Processor**, **Sender**, **Scheduler**, **Analytics**, and optionally MongoDB/Redis private.
    - **NATS only**: add a [volume](https://docs.railway.com/guides/volumes) mounted at `/data` so JetStream file storage survives redeploys. Set `PORT=8222` for healthchecks (from `docs/env/nats.env.example`).
    - **Variables**: copy from `docs/env/shared.env.example` plus the matching service file. Use Railway [reference variables](https://docs.railway.com/develop/variables#reference-variables) for cross-service URLs, for example:
      ```bash
@@ -43,7 +49,7 @@ For local development, the root `.env.example` still lists all variables in one 
 
 4. **Shared secrets** must match across services:
    - `X_API_KEY_SECRET` — hub (OAuth 1.0a) and webhook CRC (`X_CONSUMER_SECRET` or `X_API_KEY_SECRET`)
-   - `TOKEN_ENCRYPTION_KEY` — hub and processor (generate with `openssl rand -base64 32`)
+   - `TOKEN_ENCRYPTION_KEY` — hub, processor, and sender (generate with `openssl rand -base64 32`)
    - NATS subjects/durables are fixed in code (`libs/nats-js/src/nats.constants.ts`); only `NATS_URL` is configured per environment
 
 5. **Deploy** each service. Watch paths in each `railway.toml` limit rebuilds to the relevant app plus `libs/`.
@@ -159,6 +165,9 @@ yarn install
 yarn build:hub && yarn start:hub:prod
 yarn build:webhook && yarn start:webhook:prod
 yarn build:processor && yarn start:processor:prod
+yarn build:sender && yarn start:sender:prod
+yarn build:scheduler && yarn start:scheduler:prod
+yarn build:analytics && yarn start:analytics:prod
 ```
 
 Merge `docs/env/shared.env.example` with each service file into a single `.env` at the repo root for `yarn start:hub:dev`, etc.

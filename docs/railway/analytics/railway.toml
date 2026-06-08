@@ -1,0 +1,17 @@
+# Campaign analytics — set this path in Railway: /docs/railway/analytics/railway.toml
+
+[build]
+buildCommand = "yarn build:analytics"
+watchPatterns = [
+  "apps/analytics/**",
+  "libs/**",
+  "package.json",
+  "yarn.lock",
+  "nest-cli.json",
+  "tsconfig*.json",
+]
+
+[deploy]
+startCommand = "yarn start:analytics:prod"
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"

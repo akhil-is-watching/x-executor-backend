@@ -10,6 +10,7 @@ import { TokenCryptoService } from '../crypto/token-crypto.service';
 import { XChatDecryptService } from '../xchat/xchat-decrypt.service';
 import { Organization } from '../schemas/organization.schema';
 import { XConnection } from '../schemas/x-connection.schema';
+import { CampaignJob } from '../schemas/campaign-job.schema';
 import { DmPipelineService } from './dm-pipeline.service';
 import { randomBytes } from 'crypto';
 
@@ -31,6 +32,7 @@ describe('DmPipelineService', () => {
 
   const connectionModel = { findOne: jest.fn() };
   const orgModel = { findById: jest.fn() };
+  const campaignJobModel = { findOne: jest.fn() };
 
   const baseEvent: XWebhookReceivedEvent = {
     eventId: 'evt-1',
@@ -83,6 +85,7 @@ describe('DmPipelineService', () => {
       replyText: 'We sell blue widgets.',
       isKnownAnswer: true,
     });
+    campaignJobModel.findOne.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -107,6 +110,7 @@ describe('DmPipelineService', () => {
         },
         { provide: getModelToken(XConnection.name), useValue: connectionModel },
         { provide: getModelToken(Organization.name), useValue: orgModel },
+        { provide: getModelToken(CampaignJob.name), useValue: campaignJobModel },
       ],
     }).compile();
 
@@ -115,15 +119,10 @@ describe('DmPipelineService', () => {
     jest.spyOn(crypto, 'decrypt').mockReturnValue('plain-auth-token');
   });
 
-  it('publishes x.dm.reply.ready for inbound DM webhooks', async () => {
+  it('publishes x.dm.reply.ready using webhook text without GetXAPI', async () => {
     await service.handleWebhookEvent(baseEvent);
 
-    expect(mockGetxapi.fetchInboundConversation).toHaveBeenCalledWith({
-      authToken: 'plain-auth-token',
-      xUserId: '3012852462',
-      conversationId: '3012852462-1345154135381794816',
-      recipientId: '1345154135381794816',
-    });
+    expect(mockGetxapi.fetchInboundConversation).not.toHaveBeenCalled();
     expect(mockLlm.generateReply).toHaveBeenCalledWith({
       systemPrompt: 'We only sell blue widgets.',
       unknownReply: "I don't know",
@@ -144,6 +143,33 @@ describe('DmPipelineService', () => {
     );
   });
 
+  it('falls back to GetXAPI when legacy webhook has no message text', async () => {
+    await service.handleWebhookEvent({
+      ...baseEvent,
+      payload: {
+        direct_message_events: [
+          {
+            type: 'message_create',
+            id: 'dm-1',
+            message_create: {
+              sender_id: '1345154135381794816',
+              target: { recipient_id: '3012852462' },
+              message_data: {},
+            },
+          },
+        ],
+      },
+    });
+
+    expect(mockGetxapi.fetchInboundConversation).toHaveBeenCalledWith({
+      authToken: 'plain-auth-token',
+      xUserId: '3012852462',
+      conversationId: '3012852462-1345154135381794816',
+      recipientId: '1345154135381794816',
+    });
+    expect(mockNats.publishJson).toHaveBeenCalled();
+  });
+
   it('skips non-DM webhook events', async () => {
     await service.handleWebhookEvent({
       ...baseEvent,
@@ -152,7 +178,7 @@ describe('DmPipelineService', () => {
     expect(mockNats.publishJson).not.toHaveBeenCalled();
   });
 
-  it('falls back to GetXAPI when XChat event has no conversationKeyChangeEvent', async () => {
+  it('ignores XChat event when decrypt fields are missing', async () => {
     await service.handleWebhookEvent({
       ...baseEvent,
       eventTypes: ['x_chat_events'],
@@ -163,25 +189,15 @@ describe('DmPipelineService', () => {
             id: 'chat-msg-1',
             conversationId: 'xchat-conv-abc',
             encodedEvent: 'base64...',
-            // no conversation_key_change_event → GetXAPI fallback
+            // no conversation_key_change_event
           },
         ],
       },
     });
 
-    expect(mockGetxapi.fetchInboundConversation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        authToken: 'plain-auth-token',
-        xUserId: '3012852462',
-      }),
-    );
-    expect(mockNats.publishJson).toHaveBeenCalledWith(
-      NATS_SUBJECT_DM_REPLY_READY,
-      expect.objectContaining({
-        conversationId: '3012852462-1345154135381794816',
-        recipientId: '1345154135381794816',
-      }),
-    );
+    expect(mockGetxapi.fetchInboundConversation).not.toHaveBeenCalled();
+    expect(mockXChatDecrypt.decryptXChatEvent).not.toHaveBeenCalled();
+    expect(mockNats.publishJson).not.toHaveBeenCalled();
   });
 
   it('decrypts XChat event directly when encoded_event + conversation_key_change_event present', async () => {

@@ -3,7 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { randomUUID } from 'crypto';
-import { NATS_SUBJECT_DM_REPLY_READY, NatsJsService } from '@app/nats-js';
+import {
+  NATS_SUBJECT_CAMPAIGN_ANALYTICS,
+  NATS_SUBJECT_DM_REPLY_READY,
+  NatsJsService,
+} from '@app/nats-js';
 import { GetxapiService } from '@app/getxapi';
 import { LlmService } from '@app/llm';
 import {
@@ -11,6 +15,7 @@ import {
   parseInboundDmFromWebhook,
   type XDmReplyReadyEvent,
   type XWebhookReceivedEvent,
+  type CampaignAnalyticsEvent,
 } from '@app/shared';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
 import { XChatDecryptService } from '../xchat/xchat-decrypt.service';
@@ -22,6 +27,10 @@ import {
   XConnection,
   XConnectionDocument,
 } from '../schemas/x-connection.schema';
+import {
+  CampaignJob,
+  CampaignJobDocument,
+} from '../schemas/campaign-job.schema';
 
 @Injectable()
 export class DmPipelineService {
@@ -30,6 +39,8 @@ export class DmPipelineService {
   constructor(
     @InjectModel(XConnection.name)
     private readonly connectionModel: Model<XConnectionDocument>,
+    @InjectModel(CampaignJob.name)
+    private readonly campaignJobModel: Model<CampaignJobDocument>,
     @InjectModel(Organization.name)
     private readonly orgModel: Model<OrganizationDocument>,
     private readonly tokenCrypto: TokenCryptoService,
@@ -142,8 +153,14 @@ export class DmPipelineService {
         );
         return;
       }
+    } else if (isXChat) {
+      this.logger.warn(
+        `Skipping XChat webhook eventId=${event.eventId} — missing encoded_event or ` +
+          `conversation_key_change_event (cannot decrypt without both)`,
+      );
+      return;
     } else {
-      // Legacy DM path — fetch conversation via GetXAPI
+      // Legacy DM path — use webhook plaintext when present, else GetXAPI
       if (!connection.authTokenEnc) {
         this.logger.warn(
           `Connection ${event.connectionId} missing authTokenEnc; skipping DM reply`,
@@ -151,52 +168,63 @@ export class DmPipelineService {
         return;
       }
 
-      const authToken = this.tokenCrypto.decrypt(connection.authTokenEnc);
-      this.logger.log(
-        `Fetching GetXAPI conversation eventId=${event.eventId} ` +
-          `webhookConversation=${dmContext.conversationId} recipientHint=${dmContext.recipientId ?? 'none'}`,
-      );
-      const inboundConversation = await this.getxapi.fetchInboundConversation({
-        authToken,
-        xUserId: event.xUserId,
-        conversationId: dmContext.conversationId,
-        recipientId: dmContext.recipientId,
-        conversationToken: dmContext.conversationToken,
-        xChatConversationId: dmContext.xChatConversationId,
-      });
-      const conversation = inboundConversation.conversation;
-      resolvedConversationId = inboundConversation.conversationId;
-
-      if (inboundConversation.conversationId !== dmContext.conversationId) {
+      const webhookText = dmContext.inboundTextFromWebhook?.trim();
+      if (webhookText && dmContext.recipientId) {
         this.logger.log(
-          `Resolved GetXAPI conversation eventId=${event.eventId} ` +
-            `${dmContext.conversationId} → ${inboundConversation.conversationId}`,
+          `Legacy DM webhook text path eventId=${event.eventId} ` +
+            `conversation=${dmContext.conversationId} from=${dmContext.recipientId}`,
         );
-      }
-
-      recipientId =
-        inboundConversation.recipientId ??
-        dmContext.recipientId ??
-        this.getxapi.extractLatestIncomingPeerId(
-          conversation.messages,
-          event.xUserId,
-        ) ??
-        undefined;
-
-      if (!recipientId) {
-        this.logger.warn(
-          `No peer recipient for conversation ${inboundConversation.conversationId} (event ${event.eventId})`,
+        inboundText = webhookText;
+        recipientId = dmContext.recipientId;
+        resolvedConversationId = dmContext.conversationId;
+      } else {
+        const authToken = this.tokenCrypto.decrypt(connection.authTokenEnc);
+        this.logger.log(
+          `Fetching GetXAPI conversation eventId=${event.eventId} ` +
+            `webhookConversation=${dmContext.conversationId} recipientHint=${dmContext.recipientId ?? 'none'}`,
         );
-        return;
-      }
+        const inboundConversation = await this.getxapi.fetchInboundConversation({
+          authToken,
+          xUserId: event.xUserId,
+          conversationId: dmContext.conversationId,
+          recipientId: dmContext.recipientId,
+          conversationToken: dmContext.conversationToken,
+          xChatConversationId: dmContext.xChatConversationId,
+        });
+        const conversation = inboundConversation.conversation;
+        resolvedConversationId = inboundConversation.conversationId;
 
-      inboundText =
-        this.getxapi.extractLatestIncomingPlainText(
-          conversation.messages,
-          event.xUserId,
-        ) ??
-        dmContext.inboundTextFromWebhook?.trim() ??
-        null;
+        if (inboundConversation.conversationId !== dmContext.conversationId) {
+          this.logger.log(
+            `Resolved GetXAPI conversation eventId=${event.eventId} ` +
+              `${dmContext.conversationId} → ${inboundConversation.conversationId}`,
+          );
+        }
+
+        recipientId =
+          inboundConversation.recipientId ??
+          dmContext.recipientId ??
+          this.getxapi.extractLatestIncomingPeerId(
+            conversation.messages,
+            event.xUserId,
+          ) ??
+          undefined;
+
+        if (!recipientId) {
+          this.logger.warn(
+            `No peer recipient for conversation ${inboundConversation.conversationId} (event ${event.eventId})`,
+          );
+          return;
+        }
+
+        inboundText =
+          this.getxapi.extractLatestIncomingPlainText(
+            conversation.messages,
+            event.xUserId,
+          ) ??
+          webhookText ??
+          null;
+      }
     }
 
     if (!recipientId) {
@@ -216,6 +244,8 @@ export class DmPipelineService {
     this.logger.log(
       `DM inbound text eventId=${event.eventId} conversation=${resolvedConversationId}: ${JSON.stringify(inboundText)}`,
     );
+
+    await this.trackCampaignReply(event, recipientId);
 
     const unknownReply =
       org.unknownReply?.trim() ||
@@ -252,6 +282,41 @@ export class DmPipelineService {
     this.logger.log(
       `Published ${NATS_SUBJECT_DM_REPLY_READY} replyEventId=${replyEvent.eventId} ` +
         `sourceEventId=${event.eventId}`,
+    );
+  }
+
+  private async trackCampaignReply(
+    event: XWebhookReceivedEvent,
+    recipientId: string,
+  ): Promise<void> {
+    const campaignJob = await this.campaignJobModel.findOne({
+      orgId: new Types.ObjectId(event.orgId),
+      connectionId: new Types.ObjectId(event.connectionId),
+      recipientXUserId: recipientId,
+      status: 'sent',
+      replyReceived: { $ne: true },
+    });
+
+    if (!campaignJob) {
+      return;
+    }
+
+    const analyticsEvent: CampaignAnalyticsEvent = {
+      campaignId: campaignJob.campaignId.toString(),
+      orgId: event.orgId,
+      jobId: campaignJob._id.toString(),
+      type: 'reply_received',
+      occurredAt: new Date().toISOString(),
+    };
+
+    await this.natsJs.publishJson(
+      NATS_SUBJECT_CAMPAIGN_ANALYTICS,
+      analyticsEvent,
+    );
+
+    this.logger.log(
+      `Published campaign reply analytics campaignId=${analyticsEvent.campaignId} ` +
+        `jobId=${analyticsEvent.jobId} from recipient=${recipientId}`,
     );
   }
 }

@@ -18,6 +18,10 @@ import {
   XConnection,
   XConnectionSchema,
 } from './schemas/x-connection.schema';
+import {
+  CampaignJob,
+  CampaignJobSchema,
+} from './schemas/campaign-job.schema';
 import { ProcessorController } from './processor.controller';
 
 @Module({
@@ -35,6 +39,7 @@ import { ProcessorController } from './processor.controller';
     MongooseModule.forFeature([
       { name: XConnection.name, schema: XConnectionSchema },
       { name: Organization.name, schema: OrganizationSchema },
+      { name: CampaignJob.name, schema: CampaignJobSchema },
     ]),
     NatsJsModule,
     RedisModule,

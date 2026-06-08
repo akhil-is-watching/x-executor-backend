@@ -1,0 +1,28 @@
+import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { NatsJsModule } from '@app/nats-js';
+import { Campaign, CampaignSchema } from '../schemas/campaign.schema';
+import {
+  OrganizationMembership,
+  OrganizationMembershipSchema,
+} from '../schemas/organization-membership.schema';
+import { OrgMemberGuard } from '../guards/org-member.guard';
+import { OrgAdminGuard } from '../guards/org-admin.guard';
+import { CampaignsController } from './campaigns.controller';
+import { CampaignsService } from './campaigns.service';
+
+@Module({
+  imports: [
+    NatsJsModule,
+    MongooseModule.forFeature([
+      { name: Campaign.name, schema: CampaignSchema },
+      {
+        name: OrganizationMembership.name,
+        schema: OrganizationMembershipSchema,
+      },
+    ]),
+  ],
+  controllers: [CampaignsController],
+  providers: [CampaignsService, OrgMemberGuard, OrgAdminGuard],
+})
+export class CampaignsModule {}

@@ -1,0 +1,17 @@
+# Campaign scheduler — set this path in Railway: /docs/railway/scheduler/railway.toml
+
+[build]
+buildCommand = "yarn build:scheduler"
+watchPatterns = [
+  "apps/scheduler/**",
+  "libs/**",
+  "package.json",
+  "yarn.lock",
+  "nest-cli.json",
+  "tsconfig*.json",
+]
+
+[deploy]
+startCommand = "yarn start:scheduler:prod"
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"

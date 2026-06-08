@@ -1,6 +1,6 @@
 # Create and integrate a frontend with Hub
 
-This guide explains how to run and extend the admin UI that talks to the **Hub** NestJS API (`apps/hub`). Hub is the control plane for organizations, X OAuth connections, invites, org-level LLM prompts, and Account Activity subscriptions. **Webhook** and **Processor** run in the background; the browser only calls Hub.
+This guide explains how to run and extend the admin UI that talks to the **Hub** NestJS API (`apps/hub`). Hub is the control plane for organizations, X OAuth connections, invites, org-level LLM prompts, Account Activity subscriptions, and **bulk DM campaigns**. **Webhook**, **Processor**, **Sender**, **Scheduler**, and **Analytics** run in the background; the browser only calls Hub.
 
 ## Reference implementation
 
@@ -16,6 +16,7 @@ A production-ready app lives in the sibling repo **`x-executor-frontend`** (Bun 
 | Org dashboard | `x-executor-frontend/src/pages/OrgDashboardPage.tsx` |
 | OAuth success → configure link | `x-executor-frontend/src/pages/OAuthSuccessPage.tsx` |
 | Prompt editor | `x-executor-frontend/src/components/OrgPromptForm.tsx` |
+| **Campaign create + progress** | `x-executor-frontend/src/pages/CampaignCreatePage.tsx`, `CampaignProgressPage.tsx`, `src/components/CampaignCreateForm.tsx` |
 | Env template | `x-executor-frontend/.env.example` |
 | Deploy notes | `x-executor-frontend/README.md` |
 
@@ -30,6 +31,7 @@ flowchart LR
   subgraph frontend [Frontend]
     AdminUI[Admin dashboard]
     ConnectUI[Public connect page]
+    CampaignUI[Campaign UI]
   end
   subgraph hub [Hub API]
     Auth[Auth JWT]
@@ -37,37 +39,48 @@ flowchart LR
     Invites[Invites]
     OAuth[X OAuth 1.0a]
     Connections[Connections]
+    Campaigns[Campaigns]
     Webhooks[Account Activity subscribe]
   end
   subgraph background [Background]
     WebhookSvc[Webhook service]
     Processor[Processor + LLM]
+    Scheduler[Scheduler]
+    Sender[Sender]
+    Analytics[Analytics]
   end
   X[X]
   AdminUI --> Auth
   AdminUI --> Orgs
   AdminUI --> Invites
   AdminUI --> Connections
+  CampaignUI --> Campaigns
   ConnectUI --> Invites
   ConnectUI --> OAuth
   OAuth --> X
+  Campaigns --> Scheduler
+  Scheduler --> Sender
+  Sender --> X
+  Sender --> Analytics
   Webhooks --> WebhookSvc
   WebhookSvc --> Processor
   Processor --> Orgs
+  Processor --> Analytics
 ```
 
 | Actor | What they do in the UI |
 |-------|------------------------|
-| **Org owner/admin** | Register/login, create org, invites, connections, per-connection **auth token** + **XChat PIN**, **system prompt** + unknown reply |
-| **Org member** | View connections only (no invites, prompts, or revoke) |
+| **Org owner/admin** | Register/login, create org, invites, connections, per-connection **auth token** + **XChat PIN**, **system prompt** + unknown reply, **create DM campaigns** |
+| **Org member** | View connections and **campaign progress** (no invites, prompts, revoke, or campaign create) |
 | **X account holder** (no Hub login) | Open invite link → authorize X; Hub stores tokens and subscribes to the shared webhook |
 
 ---
 
 ## Prerequisites
 
-1. **Hub running** with MongoDB and Redis (see [railway.md](./railway.md) and `docs/env/hub.env.example`).
-2. **X Developer App** with **OAuth 1.0a** enabled (Account Activity subscriptions require user context OAuth 1.0a, not OAuth 2 PKCE alone):
+1. **Hub running** with MongoDB, Redis, and **NATS** (see [railway.md](./railway.md) and `docs/env/hub.env.example` + `docs/env/shared.env.example`).
+2. For **campaign DMs**, also run **Scheduler**, **Sender**, and **Analytics** (same `MONGODB_URI` and `NATS_URL` as Hub). See [§9 Campaign DMs](#9-campaign-dms-bulk-outbound).
+3. **X Developer App** with **OAuth 1.0a** enabled (Account Activity subscriptions require user context OAuth 1.0a, not OAuth 2 PKCE alone):
    - **Consumer Keys** (`X_API_KEY`, `X_API_KEY_SECRET`)
    - App permissions: **Read, Write, and Direct Messages**
    - **Account Activity API** product access on the app
@@ -120,6 +133,7 @@ Set these on **Hub** (not only in the frontend):
 | `X_REDIRECT_URI` | Stays on **Hub** (`/api/v1/oauth/x/callback`) |
 | `X_API_KEY` / `X_API_KEY_SECRET` | OAuth 1.0a Consumer Keys |
 | `X_REGISTER_WEBHOOKS_WITH_X` | `true` to register webhook + subscribe on connect |
+| `NATS_URL` | Required for campaign create (`x.campaign.created` publish) |
 
 On OAuth success, Hub redirects with query params: `orgId`, `xUserId`, `xUsername`, `webhookUrl`, `subscribed`, and optionally `invite`.
 
@@ -205,7 +219,7 @@ export async function hubFetch<T>(
 }
 ```
 
-Grouped helpers: `authApi`, `orgsApi`, `invitesApi`, `connectionsApi` in `api.ts`.
+Grouped helpers: `authApi`, `orgsApi`, `invitesApi`, `connectionsApi`, **`campaignsApi`** in `api.ts`.
 
 ---
 
@@ -217,7 +231,9 @@ Grouped helpers: `authApi`, `orgsApi`, `invitesApi`, `connectionsApi` in `api.ts
 2. `POST /api/v1/orgs` with `{ "name": "Acme" }` (optional `slug`).
 3. `GET /api/v1/orgs` → each org includes `role` (`owner` | `admin` | `member`).
 
-**Owner/admin only:** invites, prompts, members, revoke connections, set auth tokens, set XChat PINs.
+**Owner/admin only:** invites, prompts, members, revoke connections, set auth tokens, set XChat PINs, **create campaigns**.
+
+**Members:** view connections and campaign status only.
 
 ### 2. Invite link for X users
 
@@ -280,7 +296,8 @@ Show connection readiness in the UI:
 | `hasAuthToken` | Outbound DM send + legacy DM fetch | Sending replies; legacy (non-XChat) DMs |
 | `hasXchatPin` | XChat vault unlock configured | Encrypted XChat inbound decrypt |
 | `subscribed` | Account Activity subscription active | Any webhook delivery |
-| Org `systemPrompt` set | LLM instructions | Automated replies |
+| Org `systemPrompt` set | LLM instructions | Automated **inbound** replies |
+| `hasAuthToken` on ≥1 connection | Outbound send secret | **Campaign DMs** (bulk outbound) |
 
 Example API helper:
 
@@ -326,23 +343,238 @@ await orgsApi.updatePrompt(token, orgId, {
 
 `GET /api/v1/orgs/:orgId/members` → `{ userId, email, role, joinedAt }[]`
 
+### 9. Campaign DMs (bulk outbound)
+
+Send **one message** to **many X usernames**. Hub persists the campaign and publishes to NATS; **Scheduler** plans jobs across all org connections that have `hasAuthToken`, **Sender** delivers DMs via GetXAPI with rate limiting, and **Analytics** updates progress in MongoDB. The frontend **only talks to Hub** — poll status via Hub; do not call Scheduler or Analytics directly.
+
+#### Prerequisites (show in UI before launch)
+
+| Requirement | How to check in UI |
+|-------------|-------------------|
+| At least one connected account with auth token | `GET .../connections` → any `hasAuthToken: true` |
+| Background services running | Ops/deploy — Hub `NATS_URL`, plus Scheduler, Sender, Analytics on same MongoDB + NATS |
+
+Campaign sends do **not** require org `systemPrompt` (that is only for inbound LLM auto-replies). They **do** require `authTokenEnc` on sending accounts.
+
+#### Create campaign (admin only)
+
+`POST /api/v1/orgs/:orgId/campaigns`
+
+```json
+{
+  "targetUsernames": ["alice", "@Bob", "charlie"],
+  "messageText": "Hi — we're reaching out from Acme."
+}
+```
+
+Validation (Hub):
+
+- `targetUsernames` — non-empty array, max **10 000** strings
+- `messageText` — non-empty string
+- Usernames are normalized server-side: trim, strip leading `@`, lowercase, deduplicated
+
+**201 response:**
+
+```json
+{
+  "id": "674a...",
+  "status": "pending",
+  "totalTargets": 3,
+  "messageText": "Hi — we're reaching out from Acme.",
+  "targetUsernames": ["alice", "bob", "charlie"],
+  "createdAt": "2026-06-08T12:00:00.000Z"
+}
+```
+
+After create, redirect to a **campaign detail / progress** route (e.g. `/orgs/:orgId/campaigns/:campaignId`) and start polling status.
+
+#### Campaign status (member or admin)
+
+`GET /api/v1/orgs/:orgId/campaigns/:campaignId/status`
+
+```json
+{
+  "id": "674a...",
+  "orgId": "...",
+  "status": "running",
+  "messageText": "Hi — we're reaching out from Acme.",
+  "targetUsernames": ["alice", "bob", "charlie"],
+  "totalTargets": 3,
+  "messagesScheduled": 3,
+  "messagesSent": 1,
+  "repliesReceived": 0,
+  "failedCount": 0,
+  "remaining": 2,
+  "progressPercent": 33,
+  "startedAt": "2026-06-08T12:00:05.000Z",
+  "expectedEndAt": "2026-06-08T12:15:00.000Z",
+  "completedAt": null,
+  "createdAt": "2026-06-08T12:00:00.000Z",
+  "updatedAt": "2026-06-08T12:01:00.000Z"
+}
+```
+
+**`status` values:**
+
+| Value | Meaning | UI treatment |
+|-------|---------|--------------|
+| `pending` | Saved; Scheduler has not finished planning jobs yet | Spinner; poll every 5–10s |
+| `running` | Jobs scheduled and/or sending | Progress bar; poll every 10–30s |
+| `completed` | All targets processed (`messagesSent + failedCount >= totalTargets`) | Success state; stop polling |
+| `failed` | Planning failed (e.g. no accounts with auth token) | Error banner; link to connections |
+
+**Fields to display:**
+
+- **Progress:** `progressPercent`, or `messagesSent + failedCount` / `totalTargets`
+- **Sent / failed / replies:** `messagesSent`, `failedCount`, `repliesReceived`
+- **ETA:** `expectedEndAt` (relative time, e.g. “~12 min remaining”)
+- **Message preview:** `messageText` (read-only on detail page)
+
+`repliesReceived` increments when a campaign target replies to a connected account (Processor detects inbound DMs from known recipients).
+
+#### API client helpers
+
+Add to `x-executor-frontend/src/lib/hub/api.ts`:
+
+```ts
+export type CampaignStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed';
+
+export interface CreateCampaignBody {
+  targetUsernames: string[];
+  messageText: string;
+}
+
+export interface CreateCampaignResponse {
+  id: string;
+  status: CampaignStatus;
+  totalTargets: number;
+  messageText: string;
+  targetUsernames: string[];
+  createdAt: string;
+}
+
+export interface CampaignStatusResponse {
+  id: string;
+  orgId: string;
+  status: CampaignStatus;
+  messageText: string;
+  targetUsernames: string[];
+  totalTargets: number;
+  messagesScheduled: number;
+  messagesSent: number;
+  repliesReceived: number;
+  failedCount: number;
+  remaining: number;
+  progressPercent: number;
+  startedAt?: string;
+  expectedEndAt?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const campaignsApi = {
+  create(token: string, orgId: string, body: CreateCampaignBody) {
+    return hubFetch<CreateCampaignResponse>(`/orgs/${orgId}/campaigns`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+
+  getStatus(token: string, orgId: string, campaignId: string) {
+    return hubFetch<CampaignStatusResponse>(
+      `/orgs/${orgId}/campaigns/${campaignId}/status`,
+      { token },
+    );
+  },
+};
+```
+
+#### Suggested UI components
+
+| Component | Route | Role | Behavior |
+|-----------|-------|------|----------|
+| `CampaignCreateForm` | `/orgs/:orgId/campaigns/new` | admin | Textarea for targets (one `@handle` per line); message textarea; validate non-empty; block submit if no `hasAuthToken` connections |
+| `CampaignProgressPage` | `/orgs/:orgId/campaigns/:campaignId` | member+ | Poll `getStatus`; progress bar; stats grid; ETA from `expectedEndAt` |
+| `CampaignStatusBadge` | inline | all | Chip colors: pending=gray, running=blue, completed=green, failed=red |
+| `CampaignLaunchChecklist` | create page | admin | Warn if zero connections or zero `hasAuthToken` |
+
+**Parse usernames in the client** (optional UX — server also normalizes):
+
+```ts
+function parseTargetUsernames(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(/[\n,]+/)
+        .map((u) => u.trim().replace(/^@/, ''))
+        .filter(Boolean),
+    ),
+  ];
+}
+```
+
+**Polling example:**
+
+```ts
+useEffect(() => {
+  if (!campaignId || !['pending', 'running'].includes(status)) return;
+  const id = setInterval(() => {
+    campaignsApi.getStatus(token, orgId, campaignId).then(setCampaign);
+  }, 15_000);
+  return () => clearInterval(id);
+}, [campaignId, status, orgId, token]);
+```
+
+#### Background pipeline (no frontend calls)
+
+```mermaid
+flowchart LR
+  Hub[Hub POST campaign] -->|x.campaign.created| Scheduler[Scheduler]
+  Scheduler -->|plan jobs| Mongo[(MongoDB)]
+  Scheduler -->|x.campaign.dm.ready| Sender[Sender]
+  Sender -->|GetXAPI sendDm| X[X]
+  Sender -->|x.campaign.analytics| Analytics[Analytics]
+  Analytics --> Mongo
+  Processor[Processor inbound DM] -->|reply_received| Analytics
+```
+
+Hub reads the same MongoDB `campaigns` collection for status — no separate Analytics HTTP API for the UI.
+
+#### Campaign troubleshooting (admin UI)
+
+| Symptom | Likely cause | UI action |
+|---------|--------------|-----------|
+| Stuck on `pending` | Scheduler not running or NATS misconfigured | Check deploy; Hub needs `NATS_URL` |
+| `failed` immediately | No connections with auth token | Connections → set auth token on ≥1 account |
+| `failedCount` rising | Invalid usernames, rate limits, or revoked tokens | Show failed count; verify handles and tokens |
+| `repliesReceived` stays 0 | Targets not replying, or inbound pipeline down | Expected for cold outreach; inbound replies need Webhook + Processor |
+| Slow sends | Anti-detection pacing (by design) | Show `expectedEndAt`; do not expect instant delivery |
+
 ---
 
 ## Frontend routes (reference app)
 
-The sibling repo **`x-executor-frontend`** implements these routes:
+The sibling repo **`x-executor-frontend`** implements these routes (including campaigns):
 
 | Route | Guard | Hub APIs / behavior |
 |-------|-------|---------------------|
 | `/login`, `/register` | Public | `auth/login`, `auth/register` |
 | `/orgs` | JWT | `auth/me`, `orgs` list/create |
 | `/orgs/:orgId` | JWT + member | `orgs/:orgId`, `connections`; **prompt form** if admin; **auth token + XChat PIN** fields per connection (admin only) |
+| `/orgs/:orgId/campaigns/new` | JWT + admin | Create campaign form → `POST .../campaigns` |
+| `/orgs/:orgId/campaigns/:campaignId` | JWT + member | Poll `GET .../campaigns/:id/status` until terminal state |
 | `/orgs/:orgId/invites` | JWT + admin | invites CRUD |
 | `/orgs/:orgId/settings` | JWT + admin | `orgs/:orgId/prompt`, `members` (no connection secrets here) |
 | `/connect/:token` | Public | `invites/:token` → redirect oauth start |
 | `/oauth/success` | Public | Hub redirect query params; link to org dashboard to configure secrets |
 
-Nav in the reference app: **Connections** (all members), **Invites** / **Settings** (admin only).
+Nav in the reference app: **Connections** (all members), **Campaigns** (admin — create + progress via redirect), **Invites** / **Settings** (admin only).
 
 ### Where admins save the XChat PIN
 
@@ -383,6 +615,8 @@ Base: `{HUB_ORIGIN}/api/v1`
 | `PATCH` | `/orgs/:orgId/connections/:id/auth-token` | JWT + admin | Encrypted `authTokenEnc` |
 | `PATCH` | `/orgs/:orgId/connections/:id/xchat-pin` | JWT + admin | Encrypted `xchatPinEnc`; body `{ "xchatPin": "1234" }` (4–8 digits) |
 | `DELETE` | `/orgs/:orgId/connections/:id` | JWT + admin | Revoke + unsubscribe |
+| `POST` | `/orgs/:orgId/campaigns` | JWT + admin | Create bulk DM campaign; body `{ "targetUsernames", "messageText" }` |
+| `GET` | `/orgs/:orgId/campaigns/:campaignId/status` | JWT + member | Campaign progress and stats |
 
 Errors: `401` JWT, `403` not member/admin, `404`, `409` email taken, `410` invite invalid.
 
@@ -413,7 +647,7 @@ WEBHOOK_PUBLIC_BASE_URL=https://your-webhook.railway.app
 
 ## Local end-to-end checklist
 
-1. MongoDB, Redis, Hub (`yarn start:hub:dev`), Webhook + Processor + NATS if testing DM pipeline.
+1. MongoDB, Redis, NATS, Hub (`yarn start:hub:dev`), Webhook + Processor + Sender + Scheduler + Analytics if testing DM or **campaign** pipelines.
 2. Frontend on **5173** with Hub env above.
 3. Register → create org → **save system prompt** on org dashboard.
 4. Create invite → open `/connect/<token>` → Authorize with X → `/oauth/success`.
@@ -421,6 +655,7 @@ WEBHOOK_PUBLIC_BASE_URL=https://your-webhook.railway.app
 6. Admin: set **auth token** and **XChat PIN** on the connection (see §5). Without `hasXchatPin`, encrypted XChat messages are skipped by the processor.
 7. Optional: send an XChat DM to the connected account to verify decrypt → LLM → reply pipeline.
 8. Optional: favorite a tweet on the connected account to verify webhook delivery (see [railway.md](./railway.md)).
+9. **Campaign:** admin → `/orgs/:orgId/campaigns/new` → enter usernames + message → submit → watch progress on `/orgs/:orgId/campaigns/:id` (requires `hasAuthToken` on ≥1 connection and background Scheduler/Sender/Analytics).
 
 ---
 
@@ -474,17 +709,19 @@ Validate non-DM webhooks first (e.g. favorites) if unsure whether ingress is wor
 
 ## Production
 
-1. Deploy Hub, Webhook, Processor per [railway.md](./railway.md).
+1. Deploy Hub, Webhook, Processor, Sender, Scheduler, Analytics, and NATS per [railway.md](./railway.md).
 2. Deploy `x-executor-frontend` (or your UI); align `OAUTH_SUCCESS_REDIRECT_URL` and `PUBLIC_HUB_*`.
 3. X Developer Portal callback stays on **Hub**, not the frontend host.
 4. Webhook service: `X_API_KEY_SECRET` must match Hub Consumer Secret for CRC/signature.
+5. Hub, Scheduler, Sender, and Analytics share **`MONGODB_URI`** and **`NATS_URL`**. Hub publishes campaigns; Scheduler/Sender/Analytics consume NATS subjects under `x.campaign.*`.
 
 ---
 
 ## What the frontend does not do
 
 - **Ingest X webhooks** — Webhook service only.
-- **Run LLM / send DMs / decrypt XChat** — Processor + NATS; driven by org `systemPrompt` and connection secrets in MongoDB.
+- **Run LLM / send DMs / decrypt XChat** — Processor + Sender + NATS; inbound replies driven by org `systemPrompt` and connection secrets in MongoDB.
+- **Schedule or send campaign DMs** — Scheduler + Sender; frontend only creates campaigns and polls Hub status.
 - **Store or display X OAuth tokens** — Hub encrypts OAuth access tokens at rest.
 - **Store XChat PINs after submit** — collect in a password-style field, send once to Hub, then discard from client state.
 
@@ -516,17 +753,28 @@ API client: `connectionsApi.setXchatPin()` in `x-executor-frontend/src/lib/hub/a
 |------|------|
 | `apps/hub/src/main.ts` | Global prefix `api/v1`, CORS |
 | `apps/hub/src/connections/` | Connections list, `auth-token`, **`xchat-pin`** |
+| `apps/hub/src/campaigns/` | **Campaign create + status API** |
 | `apps/hub/src/oauth/` | OAuth 1.0a flow |
 | `apps/hub/src/webhooks/` | Shared webhook register + subscribe |
 | `apps/hub/src/organizations/` | Orgs + `PATCH .../prompt` |
+| `apps/scheduler/src/campaign/` | Job planning + dispatch (background) |
+| `apps/sender/src/campaign/` | Campaign DM send (background) |
+| `apps/analytics/src/campaign/` | Campaign stats consumer (background) |
 | `apps/hub/test/app.e2e-spec.ts` | Integration reference |
 | `apps/processor/src/dm/` | DM pipeline; XChat decrypt branch |
 | `apps/processor/src/xchat/` | Juicebox unlock + 3-level cache |
-| `docs/env/hub.env.example` | Hub env |
+| `docs/env/hub.env.example` | Hub env (+ merge `shared.env.example` for `NATS_URL`) |
+| `docs/env/scheduler.env.example` | Campaign pacing limits |
+| `docs/env/analytics.env.example` | Analytics consumer env |
 | `docs/env/webhook.env.example` | Webhook CRC secret |
 | `docs/railway.md` | Deploy all services |
 | `x-executor-frontend/README.md` | Run, Vercel, OAuth troubleshooting, connection readiness |
-| `x-executor-frontend/src/lib/hub/api.ts` | `connectionsApi.setXchatPin`, `setAuthToken` |
+| `x-executor-frontend/src/lib/hub/api.ts` | `connectionsApi`, **`campaignsApi`** |
+| `x-executor-frontend/src/components/CampaignCreateForm.tsx` | Campaign launch form (admin) |
+| `x-executor-frontend/src/components/CampaignLaunchChecklist.tsx` | Pre-flight auth-token checks |
+| `x-executor-frontend/src/components/CampaignStatusBadge.tsx` | Campaign status chip |
+| `x-executor-frontend/src/pages/CampaignCreatePage.tsx` | `/orgs/:orgId/campaigns/new` |
+| `x-executor-frontend/src/pages/CampaignProgressPage.tsx` | `/orgs/:orgId/campaigns/:campaignId` |
 | `x-executor-frontend/src/components/ConnectionAdminPanel.tsx` | Auth token + XChat PIN form (admin) |
 | `x-executor-frontend/src/components/ConnectionStatusBadges.tsx` | `hasAuthToken`, `hasXchatPin`, `subscribed` badges |
 | `x-executor-frontend/src/pages/OrgDashboardPage.tsx` | Renders connection cards + admin panel |

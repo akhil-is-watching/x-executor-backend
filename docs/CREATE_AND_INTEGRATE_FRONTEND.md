@@ -11,6 +11,10 @@ A production-ready app lives in the sibling repo **`x-executor-frontend`** (Bun 
 | App entry | `x-executor-frontend/src/index.tsx` |
 | Routes | `x-executor-frontend/src/router.tsx` |
 | Hub client | `x-executor-frontend/src/lib/hub/api.ts`, `client.ts` |
+| Connection secrets UI | `x-executor-frontend/src/components/ConnectionAdminPanel.tsx` |
+| Readiness badges | `x-executor-frontend/src/components/ConnectionStatusBadges.tsx` |
+| Org dashboard | `x-executor-frontend/src/pages/OrgDashboardPage.tsx` |
+| OAuth success → configure link | `x-executor-frontend/src/pages/OAuthSuccessPage.tsx` |
 | Prompt editor | `x-executor-frontend/src/components/OrgPromptForm.tsx` |
 | Env template | `x-executor-frontend/.env.example` |
 | Deploy notes | `x-executor-frontend/README.md` |
@@ -54,7 +58,7 @@ flowchart LR
 
 | Actor | What they do in the UI |
 |-------|------------------------|
-| **Org owner/admin** | Register/login, create org, invites, connections, per-connection auth tokens, **system prompt** + unknown reply |
+| **Org owner/admin** | Register/login, create org, invites, connections, per-connection **auth token** + **XChat PIN**, **system prompt** + unknown reply |
 | **Org member** | View connections only (no invites, prompts, or revoke) |
 | **X account holder** (no Hub login) | Open invite link → authorize X; Hub stores tokens and subscribes to the shared webhook |
 
@@ -213,7 +217,7 @@ Grouped helpers: `authApi`, `orgsApi`, `invitesApi`, `connectionsApi` in `api.ts
 2. `POST /api/v1/orgs` with `{ "name": "Acme" }` (optional `slug`).
 3. `GET /api/v1/orgs` → each org includes `role` (`owner` | `admin` | `member`).
 
-**Owner/admin only:** invites, prompts, members, revoke connections, set auth tokens.
+**Owner/admin only:** invites, prompts, members, revoke connections, set auth tokens, set XChat PINs.
 
 ### 2. Invite link for X users
 
@@ -253,15 +257,39 @@ Display query params: `orgId`, `xUserId`, `xUsername`, `webhookUrl`, `subscribed
     "connectedAt": "...",
     "webhookUrl": "https://webhook.../api/v1/webhooks/incoming",
     "subscribed": true,
-    "hasAuthToken": false
+    "hasAuthToken": false,
+    "hasXchatPin": false
   }
 ]
 ```
 
-| Action | Method | Path | Role |
-|--------|--------|------|------|
-| Set automation secret | `PATCH` | `/orgs/:orgId/connections/:id/auth-token` `{ "authToken" }` | admin |
-| Revoke | `DELETE` | `/orgs/:orgId/connections/:id` | admin |
+| Action | Method | Path | Body | Role |
+|--------|--------|------|------|------|
+| Set automation secret | `PATCH` | `/orgs/:orgId/connections/:id/auth-token` | `{ "authToken": "..." }` | admin |
+| Set XChat PIN | `PATCH` | `/orgs/:orgId/connections/:id/xchat-pin` | `{ "xchatPin": "1234" }` | admin |
+| Revoke | `DELETE` | `/orgs/:orgId/connections/:id` | — | admin |
+
+**Auth token** — browser `auth_token` cookie from X (used by GetXAPI for legacy DMs and outbound sends). Encrypted at rest as `authTokenEnc`.
+
+**XChat PIN** — the 4–8 digit passcode the X account holder set in X Chat settings (`x.com/messages` → unlock). Required for the processor to decrypt **encrypted XChat** inbound messages. Each connected account can have a **different PIN**. Encrypted at rest as `xchatPinEnc`. When updated, Hub invalidates the cached unlock secret so the processor re-unlocks on the next message.
+
+Show connection readiness in the UI:
+
+| Flag | Meaning | Required for |
+|------|---------|--------------|
+| `hasAuthToken` | Outbound DM send + legacy DM fetch | Sending replies; legacy (non-XChat) DMs |
+| `hasXchatPin` | XChat vault unlock configured | Encrypted XChat inbound decrypt |
+| `subscribed` | Account Activity subscription active | Any webhook delivery |
+| Org `systemPrompt` set | LLM instructions | Automated replies |
+
+Example API helper:
+
+```ts
+await connectionsApi.setXchatPin(token, orgId, connectionId, '1234');
+// → { updated: true, hasXchatPin: true }
+```
+
+Do **not** persist the PIN in frontend storage after the request succeeds — treat it like a password field (collect, submit once, discard).
 
 ### 6. Organization prompts (admin) — required for DM replies
 
@@ -300,19 +328,33 @@ await orgsApi.updatePrompt(token, orgId, {
 
 ---
 
-## Suggested frontend routes
+## Frontend routes (reference app)
+
+The sibling repo **`x-executor-frontend`** implements these routes:
 
 | Route | Guard | Hub APIs / behavior |
 |-------|-------|---------------------|
 | `/login`, `/register` | Public | `auth/login`, `auth/register` |
 | `/orgs` | JWT | `auth/me`, `orgs` list/create |
-| `/orgs/:orgId` | JWT + member | `orgs/:orgId`, `connections`; **prompt form** if admin |
+| `/orgs/:orgId` | JWT + member | `orgs/:orgId`, `connections`; **prompt form** if admin; **auth token + XChat PIN** fields per connection (admin only) |
 | `/orgs/:orgId/invites` | JWT + admin | invites CRUD |
-| `/orgs/:orgId/settings` | JWT + admin | `orgs/:orgId/prompt`, `members` |
+| `/orgs/:orgId/settings` | JWT + admin | `orgs/:orgId/prompt`, `members` (no connection secrets here) |
 | `/connect/:token` | Public | `invites/:token` → redirect oauth start |
-| `/oauth/success` | Public | Hub redirect query params |
+| `/oauth/success` | Public | Hub redirect query params; link to org dashboard to configure secrets |
 
 Nav in the reference app: **Connections** (all members), **Invites** / **Settings** (admin only).
+
+### Where admins save the XChat PIN
+
+1. Log in → **Organizations** → open org → **`/orgs/:orgId`** (org dashboard).
+2. Each connected X account is a card with readiness badges (`subscribed`, `auth token`, `XChat PIN`).
+3. **Owner/admin only:** expand the card footer — `ConnectionAdminPanel` shows password fields for **Auth token** and **XChat PIN**.
+4. Enter the 4–8 digit PIN (same as x.com/messages unlock) → **Save XChat PIN**.
+5. On success the field clears, a green confirmation appears, and badges refresh (`hasXchatPin: true`).
+
+After OAuth connect, `/oauth/success` includes a **Configure connection (admin)** button when `orgId` is present.
+
+See also `x-executor-frontend/README.md` → **Connection readiness**.
 
 ---
 
@@ -337,8 +379,9 @@ Base: `{HUB_ORIGIN}/api/v1`
 | `GET` | `/invites/:token` | — | Public invite metadata |
 | `GET` | `/oauth/x/start?invite=` | — | 302 to X (browser navigation) |
 | `GET` | `/oauth/x/callback` | — | X callback; redirect or JSON |
-| `GET` | `/orgs/:orgId/connections` | JWT + member | List connections |
-| `PATCH` | `/orgs/:orgId/connections/:id/auth-token` | JWT + admin | Encrypted secret |
+| `GET` | `/orgs/:orgId/connections` | JWT + member | List connections (`hasAuthToken`, `hasXchatPin`) |
+| `PATCH` | `/orgs/:orgId/connections/:id/auth-token` | JWT + admin | Encrypted `authTokenEnc` |
+| `PATCH` | `/orgs/:orgId/connections/:id/xchat-pin` | JWT + admin | Encrypted `xchatPinEnc`; body `{ "xchatPin": "1234" }` (4–8 digits) |
 | `DELETE` | `/orgs/:orgId/connections/:id` | JWT + admin | Revoke + unsubscribe |
 
 Errors: `401` JWT, `403` not member/admin, `404`, `409` email taken, `410` invite invalid.
@@ -375,16 +418,57 @@ WEBHOOK_PUBLIC_BASE_URL=https://your-webhook.railway.app
 3. Register → create org → **save system prompt** on org dashboard.
 4. Create invite → open `/connect/<token>` → Authorize with X → `/oauth/success`.
 5. Admin: connection shows `@username`, `subscribed: true`, shared `webhookUrl`.
-6. Optional: favorite a tweet on the connected account to verify webhook delivery (see [railway.md](./railway.md)).
+6. Admin: set **auth token** and **XChat PIN** on the connection (see §5). Without `hasXchatPin`, encrypted XChat messages are skipped by the processor.
+7. Optional: send an XChat DM to the connected account to verify decrypt → LLM → reply pipeline.
+8. Optional: favorite a tweet on the connected account to verify webhook delivery (see [railway.md](./railway.md)).
 
 ---
 
-## DM webhooks and XChat (platform limitation)
+## DM webhooks, legacy DMs, and XChat
 
-Account Activity `direct_message_events` only fire for **legacy, unencrypted** DMs. X is migrating users to **XChat** (E2EE); `x.com/messages` may not produce API webhook events. The frontend and Hub subscription can be correct while DMs still never arrive.
+### Event types
 
-- Validate the pipeline with **non-DM** events (e.g. favorites) first.
-- Future XChat support likely uses **Activity Stream** (`chat.received`) + OAuth 2 + client-side decryption — not the current Hub webhook URL.
+| Source | Webhook field | Processor behavior |
+|--------|---------------|-------------------|
+| Legacy DM | `direct_message_events` | Fetch plaintext via GetXAPI (`auth_token`) |
+| XChat (encrypted) | `x_chat_events` + `encoded_event` | Decrypt in processor using OAuth tokens + **per-connection XChat PIN** |
+| XAA envelope | `chat.received` (normalized to `x_chat_events`) | Same as XChat when encrypted fields present |
+
+Legacy Account Activity `direct_message_events` only fire for **unencrypted** DMs. Many users are on **XChat** (E2EE); those arrive as `x_chat_events` with base64 `encoded_event` and `conversation_key_change_event` blobs — not as plaintext in the webhook.
+
+### What the frontend must configure for XChat
+
+After OAuth connect, an admin should complete **both** secrets on each connection:
+
+1. **Auth token** — `PATCH .../auth-token` (for outbound sends and legacy DM paths).
+2. **XChat PIN** — `PATCH .../xchat-pin` (for inbound decrypt). Ask the X account holder for the same PIN they use to unlock X Chat in the browser/app.
+
+The UI shows a destructive badge when `hasXchatPin: false` (`ConnectionStatusBadges`: “XChat PIN required”).
+
+### What happens in the backend (no frontend work)
+
+```mermaid
+flowchart LR
+  Webhook[Webhook] --> NATS[NATS]
+  NATS --> Processor[Processor]
+  Processor -->|"legacy DM"| GetXAPI[GetXAPI]
+  Processor -->|"x_chat_events"| Decrypt[XChatDecryptService]
+  Decrypt --> LLM[LLM]
+  LLM --> Sender[Sender via GetXAPI]
+```
+
+Processor requirements (Railway — not set in the frontend): `X_API_KEY`, `X_API_KEY_SECRET` (same OAuth 1.0a Consumer Keys as Hub), plus org `systemPrompt`.
+
+### Troubleshooting from the admin UI
+
+| Symptom | Likely cause | UI action |
+|---------|--------------|-----------|
+| Connection listed, no replies | Missing `systemPrompt` | Org dashboard → save prompt |
+| Legacy DMs work, XChat silent | Missing `hasXchatPin` | Org dashboard → connection card → **Save XChat PIN** |
+| Replies fail to send | Missing `hasAuthToken` | Org dashboard → connection card → **Save auth token** |
+| Wrong PIN / changed on X | Decrypt fails in logs | Re-submit correct PIN on org dashboard |
+
+Validate non-DM webhooks first (e.g. favorites) if unsure whether ingress is working — see [railway.md](./railway.md).
 
 ---
 
@@ -400,8 +484,29 @@ Account Activity `direct_message_events` only fire for **legacy, unencrypted** D
 ## What the frontend does not do
 
 - **Ingest X webhooks** — Webhook service only.
-- **Run LLM / send DMs** — Processor + NATS; driven by org `systemPrompt` in MongoDB.
-- **Store or display X OAuth tokens** — Hub encrypts at rest.
+- **Run LLM / send DMs / decrypt XChat** — Processor + NATS; driven by org `systemPrompt` and connection secrets in MongoDB.
+- **Store or display X OAuth tokens** — Hub encrypts OAuth access tokens at rest.
+- **Store XChat PINs after submit** — collect in a password-style field, send once to Hub, then discard from client state.
+
+---
+
+## Connection secrets UI (implemented in x-executor-frontend)
+
+Per connection on **`/orgs/:orgId`** (not on `/orgs/:orgId/settings`):
+
+| Field | Component | Input | Submit to |
+|-------|-----------|-------|-----------|
+| Auth token | `ConnectionAdminPanel` | Password, masked | `PATCH .../auth-token` |
+| XChat PIN | `ConnectionAdminPanel` | Password, 4–8 digits (`/^\d{4,8}$/`) | `PATCH .../xchat-pin` |
+| Status | `ConnectionStatusBadges` | Read-only chips | `hasAuthToken`, `hasXchatPin`, `subscribed` |
+
+Behavior:
+
+- **Save XChat PIN** disabled until PIN matches `/^\d{4,8}$/`; non-digits stripped on input.
+- On 200: input cleared, inline success message, connection list refreshed (badges update).
+- PIN never stored in `localStorage` — only sent once to Hub (`xchatPinEnc` at rest).
+
+API client: `connectionsApi.setXchatPin()` in `x-executor-frontend/src/lib/hub/api.ts`. Tests: `src/lib/hub/api.test.ts`.
 
 ---
 
@@ -410,12 +515,19 @@ Account Activity `direct_message_events` only fire for **legacy, unencrypted** D
 | Path | Role |
 |------|------|
 | `apps/hub/src/main.ts` | Global prefix `api/v1`, CORS |
+| `apps/hub/src/connections/` | Connections list, `auth-token`, **`xchat-pin`** |
 | `apps/hub/src/oauth/` | OAuth 1.0a flow |
 | `apps/hub/src/webhooks/` | Shared webhook register + subscribe |
 | `apps/hub/src/organizations/` | Orgs + `PATCH .../prompt` |
 | `apps/hub/test/app.e2e-spec.ts` | Integration reference |
-| `apps/processor/src/dm/` | Uses `org.systemPrompt` |
+| `apps/processor/src/dm/` | DM pipeline; XChat decrypt branch |
+| `apps/processor/src/xchat/` | Juicebox unlock + 3-level cache |
 | `docs/env/hub.env.example` | Hub env |
 | `docs/env/webhook.env.example` | Webhook CRC secret |
 | `docs/railway.md` | Deploy all services |
-| `x-executor-frontend/README.md` | Run, Vercel, OAuth troubleshooting |
+| `x-executor-frontend/README.md` | Run, Vercel, OAuth troubleshooting, connection readiness |
+| `x-executor-frontend/src/lib/hub/api.ts` | `connectionsApi.setXchatPin`, `setAuthToken` |
+| `x-executor-frontend/src/components/ConnectionAdminPanel.tsx` | Auth token + XChat PIN form (admin) |
+| `x-executor-frontend/src/components/ConnectionStatusBadges.tsx` | `hasAuthToken`, `hasXchatPin`, `subscribed` badges |
+| `x-executor-frontend/src/pages/OrgDashboardPage.tsx` | Renders connection cards + admin panel |
+| `x-executor-frontend/src/pages/OAuthSuccessPage.tsx` | Post-OAuth link to org dashboard |

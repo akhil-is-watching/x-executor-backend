@@ -113,7 +113,7 @@ Webhook publishes to JetStream subject `x.webhook.received` after a successful P
 3. **Webhook shows NATS publish** — if you see `X webhook processed → 1 NATS event(s)` but no `Published x.webhook.received`, redeploy Webhook with latest code or check for publish errors in logs.
 4. **Favorites / tweets are not DMs** — Processor **ignores** non-`direct_message_events` after logging `Skipping non-DM`. A favorite test proves Webhook → NATS → Processor; it will **not** run the DM/LLM pipeline.
 5. **DM pipeline prerequisites** (after `Processing DM`): same `MONGODB_URI` as Hub, org **system prompt** set, connection **auth token** set in admin UI, `TOKEN_ENCRYPTION_KEY` matches Hub, GetXAPI/OpenAI/Redis env on Processor.
-6. **XChat / encrypted DMs** — no webhook from X means nothing reaches NATS (see [CREATE_AND_INTEGRATE_FRONTEND.md](./CREATE_AND_INTEGRATE_FRONTEND.md#dm-webhooks-and-xchat-platform-limitation)).
+6. **XChat / encrypted DMs** — require connection **XChat PIN** in Hub admin UI (`hasXchatPin`); Processor needs `X_API_KEY` / `X_API_KEY_SECRET` (see [CREATE_AND_INTEGRATE_FRONTEND.md](./CREATE_AND_INTEGRATE_FRONTEND.md#dm-webhooks-legacy-dms-and-xchat)).
 
 **Hub env (defaults on):**
 

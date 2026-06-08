@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { NatsJsModule } from '@app/nats-js';
 import { Campaign, CampaignSchema } from '../schemas/campaign.schema';
 import {
   CampaignJob,
@@ -16,6 +17,7 @@ import { JobPlannerService } from './job-planner.service';
 
 @Module({
   imports: [
+    NatsJsModule,
     MongooseModule.forFeature([
       { name: Campaign.name, schema: CampaignSchema },
       { name: CampaignJob.name, schema: CampaignJobSchema },

@@ -66,6 +66,7 @@ export interface FetchInboundConversationParams {
   conversationId: string;
   recipientId?: string;
   conversationToken?: string;
+  xChatConversationId?: string;
 }
 
 export interface FetchInboundConversationResult {

@@ -79,6 +79,7 @@ describe('dm-webhook.util', () => {
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
       conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
+      xChatConversationId: 'xchat-conv-abc',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
     });
@@ -100,6 +101,7 @@ describe('dm-webhook.util', () => {
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
       conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
+      xChatConversationId: 'xchat-conv-abc',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
     });
@@ -118,6 +120,7 @@ describe('dm-webhook.util', () => {
 
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
       conversationId: 'xchat-conv-only',
+      xChatConversationId: 'xchat-conv-only',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
     });
@@ -139,6 +142,7 @@ describe('dm-webhook.util', () => {
     expect(parseInboundDmFromWebhook(raw, '3012852462')).toEqual({
       conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
+      xChatConversationId: 'xchat-from-xaa',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
     });
@@ -191,6 +195,7 @@ describe('dm-webhook.util', () => {
     expect(parseInboundDmFromWebhook(raw, '1390625949587173378')).toEqual({
       conversationId: '1390625949587173378:1390625949587173378',
       conversationToken: 'jwt-token',
+      xChatConversationId: '1390625949587173378:1390625949587173378',
       inboundMessageId: '60d9a817-bbea-43c7-84b2-c9b2345718a2',
       inboundTextFromWebhook: undefined,
     });
@@ -215,6 +220,7 @@ describe('dm-webhook.util', () => {
     ).toEqual({
       conversationId: '1774607208379-1390625949587173378',
       recipientId: '1774607208379',
+      xChatConversationId: '1390625949587173378:1774607208379',
       inboundMessageId: 'msg-1',
       inboundTextFromWebhook: undefined,
     });

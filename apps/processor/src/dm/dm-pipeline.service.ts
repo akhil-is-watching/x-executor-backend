@@ -105,6 +105,7 @@ export class DmPipelineService {
       conversationId: dmContext.conversationId,
       recipientId: dmContext.recipientId,
       conversationToken: dmContext.conversationToken,
+      xChatConversationId: dmContext.xChatConversationId,
     });
     const conversation = inboundConversation.conversation;
 

@@ -382,6 +382,53 @@ describe('GetxapiService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
+  it('fetchInboundConversation skips legacy id without text when XChat token requires decryption', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversation_id: '1390625949587173378-2024635972819034112',
+          messages: [{ id: '1', senderId: '2024635972819034112' }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversation_id: '1390625949587173378:2024635972819034112',
+          messages: [
+            {
+              id: '2',
+              senderId: '2024635972819034112',
+              text: 'hello from xchat',
+            },
+          ],
+        }),
+      });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await service.fetchInboundConversation({
+      authToken: 'auth',
+      xUserId: '1390625949587173378',
+      conversationId: '1390625949587173378-2024635972819034112',
+      recipientId: '2024635972819034112',
+      conversationToken: 'jwt-token',
+      xChatConversationId: '1390625949587173378:2024635972819034112',
+    });
+
+    expect(result.conversationId).toBe('1390625949587173378:2024635972819034112');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      auth_token: 'auth',
+      conversation_id: '1390625949587173378:2024635972819034112',
+      conversation_token: 'jwt-token',
+      count: 50,
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).conversation_id).toBe(
+      '2024635972819034112:1390625949587173378',
+    );
+  });
+
   it('sendDm calls GetXAPI', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,

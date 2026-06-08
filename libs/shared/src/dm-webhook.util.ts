@@ -6,6 +6,8 @@ export interface InboundDmWebhookContext {
   recipientId?: string;
   /** XChat session token for GetXAPI /twitter/dm/conversation decryption. */
   conversationToken?: string;
+  /** Raw XChat `userId:peerId` id from the webhook (before legacy normalization). */
+  xChatConversationId?: string;
   inboundMessageId?: string;
   inboundTextFromWebhook?: string;
 }
@@ -155,6 +157,20 @@ function readConversationToken(
   return typeof token === 'string' && token.length > 0 ? token : undefined;
 }
 
+function readRawXChatConversationId(
+  event: Record<string, unknown>,
+  payloadConversationId?: string,
+): string | undefined {
+  const conversationId = readConversationId(
+    event,
+    payloadConversationId ? { conversation_id: payloadConversationId } : null,
+  );
+  if (conversationId && isXChatConversationId(conversationId)) {
+    return conversationId;
+  }
+  return undefined;
+}
+
 function resolveXChatPeerAndConversation(
   event: Record<string, unknown>,
   xUserId: string,
@@ -189,6 +205,10 @@ function readInboundChatEvent(
   payloadConversationId?: string,
 ): InboundDmWebhookContext | null {
   const conversationToken = readConversationToken(event);
+  const xChatConversationId = readRawXChatConversationId(
+    event,
+    payloadConversationId,
+  );
   const senderRaw =
     event.sender_id ??
     event.senderId ??
@@ -204,6 +224,7 @@ function readInboundChatEvent(
         conversationId: buildConversationId(xUserId, senderId),
         recipientId: senderId,
         conversationToken,
+        xChatConversationId,
         inboundMessageId:
           messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
         inboundTextFromWebhook: undefined,
@@ -220,6 +241,7 @@ function readInboundChatEvent(
     return {
       ...fromConversation,
       conversationToken,
+      xChatConversationId,
       inboundMessageId:
         messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
       inboundTextFromWebhook: undefined,

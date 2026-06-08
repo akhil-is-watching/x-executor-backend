@@ -143,8 +143,21 @@ export class GetxapiService {
           attempt.conversationId,
           params.xUserId,
           params.recipientId,
-          params.conversationToken,
+          attempt.useConversationToken ? params.conversationToken : undefined,
         );
+        if (
+          params.conversationToken &&
+          !this.extractLatestIncomingPlainText(
+            result.conversation.messages,
+            params.xUserId,
+          )
+        ) {
+          this.logger.warn(
+            `GetXAPI conversation had no decrypted inbound text for ${attempt.label} ` +
+              `id=${attempt.conversationId} messages=${result.conversation.messages?.length ?? 0}`,
+          );
+          continue;
+        }
         this.logger.log(
           `Fetched /twitter/dm/conversation via ${attempt.label} id=${result.conversationId}`,
         );
@@ -175,17 +188,25 @@ export class GetxapiService {
 
   private buildConversationFetchAttempts(
     params: FetchInboundConversationParams,
-  ): Array<{ conversationId: string; label: string }> {
-    const attempts: Array<{ conversationId: string; label: string }> = [];
+  ): Array<{ conversationId: string; label: string; useConversationToken: boolean }> {
+    const attempts: Array<{
+      conversationId: string;
+      label: string;
+      useConversationToken: boolean;
+    }> = [];
     const seen = new Set<string>();
 
-    const add = (conversationId: string | null | undefined, label: string) => {
+    const add = (
+      conversationId: string | null | undefined,
+      label: string,
+      useConversationToken = false,
+    ) => {
       const trimmed = conversationId?.trim();
       if (!trimmed || seen.has(trimmed)) {
         return;
       }
       seen.add(trimmed);
-      attempts.push({ conversationId: trimmed, label });
+      attempts.push({ conversationId: trimmed, label, useConversationToken });
     };
 
     const resolved = resolveGetxapiConversationId(
@@ -196,12 +217,30 @@ export class GetxapiService {
       params.xUserId,
     );
 
-    if (isXChatConversationId(params.conversationId)) {
-      add(params.conversationId, 'xchat-webhook');
+    if (params.conversationToken) {
+      add(params.xChatConversationId, 'xchat-webhook', true);
+      if (isXChatConversationId(params.conversationId)) {
+        add(params.conversationId, 'xchat-context', true);
+      }
+      if (params.recipientId) {
+        add(
+          `${params.xUserId}:${params.recipientId}`,
+          'xchat-colon-bot-peer',
+          true,
+        );
+        add(
+          `${params.recipientId}:${params.xUserId}`,
+          'xchat-colon-peer-bot',
+          true,
+        );
+      }
+    } else if (isXChatConversationId(params.conversationId)) {
+      add(params.conversationId, 'xchat-webhook', false);
     }
-    add(resolved, 'resolved');
+
+    add(resolved, 'resolved', false);
     if (!isXChatConversationId(params.conversationId)) {
-      add(params.conversationId, 'webhook');
+      add(params.conversationId, 'webhook', false);
     }
 
     return attempts;

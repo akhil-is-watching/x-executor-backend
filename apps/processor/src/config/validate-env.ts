@@ -6,6 +6,8 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     'TOKEN_ENCRYPTION_KEY',
     'GETXAPI_API_KEY',
     'OPENAI_API_KEY',
+    'X_API_KEY',
+    'X_API_KEY_SECRET',
   ] as const;
 
   for (const key of required) {

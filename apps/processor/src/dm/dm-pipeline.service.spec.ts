@@ -7,6 +7,7 @@ import { GetxapiService } from '@app/getxapi';
 import { LlmService } from '@app/llm';
 import type { XWebhookReceivedEvent } from '@app/shared';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
+import { XChatDecryptService } from '../xchat/xchat-decrypt.service';
 import { Organization } from '../schemas/organization.schema';
 import { XConnection } from '../schemas/x-connection.schema';
 import { DmPipelineService } from './dm-pipeline.service';
@@ -19,6 +20,7 @@ describe('DmPipelineService', () => {
   const orgId = new Types.ObjectId();
   const connectionId = new Types.ObjectId();
 
+  const mockXChatDecrypt = { decryptXChatEvent: jest.fn() };
   const mockNats = { publishJson: jest.fn() };
   const mockGetxapi = {
     fetchInboundConversation: jest.fn(),
@@ -88,6 +90,7 @@ describe('DmPipelineService', () => {
         TokenCryptoService,
         { provide: NatsJsService, useValue: mockNats },
         { provide: GetxapiService, useValue: mockGetxapi },
+        { provide: XChatDecryptService, useValue: mockXChatDecrypt },
         { provide: LlmService, useValue: mockLlm },
         {
           provide: ConfigService,
@@ -149,7 +152,7 @@ describe('DmPipelineService', () => {
     expect(mockNats.publishJson).not.toHaveBeenCalled();
   });
 
-  it('publishes x.dm.reply.ready for inbound XChat webhooks', async () => {
+  it('falls back to GetXAPI when XChat event has no conversationKeyChangeEvent', async () => {
     await service.handleWebhookEvent({
       ...baseEvent,
       eventTypes: ['x_chat_events'],
@@ -160,19 +163,18 @@ describe('DmPipelineService', () => {
             id: 'chat-msg-1',
             conversationId: 'xchat-conv-abc',
             encodedEvent: 'base64...',
+            // no conversation_key_change_event → GetXAPI fallback
           },
         ],
       },
     });
 
-    expect(mockGetxapi.fetchInboundConversation).toHaveBeenCalledWith({
-      authToken: 'plain-auth-token',
-      xUserId: '3012852462',
-      conversationId: 'xchat-conv-abc',
-      recipientId: undefined,
-      conversationToken: undefined,
-      xChatConversationId: 'xchat-conv-abc',
-    });
+    expect(mockGetxapi.fetchInboundConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authToken: 'plain-auth-token',
+        xUserId: '3012852462',
+      }),
+    );
     expect(mockNats.publishJson).toHaveBeenCalledWith(
       NATS_SUBJECT_DM_REPLY_READY,
       expect.objectContaining({
@@ -180,5 +182,80 @@ describe('DmPipelineService', () => {
         recipientId: '1345154135381794816',
       }),
     );
+  });
+
+  it('decrypts XChat event directly when encoded_event + conversation_key_change_event present', async () => {
+    connectionModel.findOne.mockResolvedValue({
+      _id: connectionId,
+      orgId,
+      accessTokenEnc: 'enc-at',
+      accessTokenSecretEnc: 'enc-ats',
+      xchatPinEnc: 'enc-pin',
+      authTokenEnc: 'enc-auth',
+    });
+    mockXChatDecrypt.decryptXChatEvent.mockResolvedValue('Hey from XChat');
+
+    await service.handleWebhookEvent({
+      ...baseEvent,
+      eventTypes: ['x_chat_events'],
+      payload: {
+        for_user_id: '3012852462',
+        x_chat_events: [
+          {
+            id: 'xchat-msg-1',
+            sender_id: '2024635972819034112',
+            conversation_id: '3012852462:2024635972819034112',
+            encoded_event: 'ENCODED_BASE64==',
+            conversation_key_change_event: 'KEY_CHANGE_BLOB==',
+            conversation_key_version: '1780909207040',
+          },
+        ],
+      },
+    });
+
+    expect(mockXChatDecrypt.decryptXChatEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        xUserId: '3012852462',
+        encodedEvent: 'ENCODED_BASE64==',
+        conversationKeyChangeEvent: 'KEY_CHANGE_BLOB==',
+        conversationKeyVersion: '1780909207040',
+      }),
+    );
+    expect(mockGetxapi.fetchInboundConversation).not.toHaveBeenCalled();
+    expect(mockNats.publishJson).toHaveBeenCalledWith(
+      NATS_SUBJECT_DM_REPLY_READY,
+      expect.objectContaining({
+        inboundText: 'Hey from XChat',
+        recipientId: '2024635972819034112',
+      }),
+    );
+  });
+
+  it('skips XChat event when xchatPinEnc is missing on connection', async () => {
+    connectionModel.findOne.mockResolvedValue({
+      _id: connectionId,
+      orgId,
+      accessTokenEnc: 'enc-at',
+      accessTokenSecretEnc: 'enc-ats',
+      // no xchatPinEnc
+    });
+
+    await service.handleWebhookEvent({
+      ...baseEvent,
+      eventTypes: ['x_chat_events'],
+      payload: {
+        x_chat_events: [
+          {
+            id: 'xchat-msg-1',
+            sender_id: '2024635972819034112',
+            encoded_event: 'ENCODED==',
+            conversation_key_change_event: 'KEY_CHANGE==',
+          },
+        ],
+      },
+    });
+
+    expect(mockXChatDecrypt.decryptXChatEvent).not.toHaveBeenCalled();
+    expect(mockNats.publishJson).not.toHaveBeenCalled();
   });
 });

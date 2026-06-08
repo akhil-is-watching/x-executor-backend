@@ -27,6 +27,9 @@ export class XConnection {
   authTokenEnc?: string;
 
   @Prop()
+  xchatPinEnc?: string;
+
+  @Prop()
   refreshTokenEnc?: string;
 
   @Prop()

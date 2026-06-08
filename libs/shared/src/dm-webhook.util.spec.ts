@@ -7,9 +7,11 @@ import {
 } from './dm-webhook.util';
 
 describe('dm-webhook.util', () => {
-  it('buildConversationId sorts ids numerically', () => {
-    expect(buildConversationId('999', '1000')).toBe('999-1000');
-    expect(buildConversationId('1000', '999')).toBe('999-1000');
+  it('buildConversationId uses for_user_id-sender_id order (GetXAPI format)', () => {
+    expect(buildConversationId('1390625949587173378', '1969370428272754692')).toBe(
+      '1390625949587173378-1969370428272754692',
+    );
+    expect(buildConversationId('1000', '999')).toBe('1000-999');
   });
 
   it('detects direct message webhooks', () => {
@@ -79,9 +81,13 @@ describe('dm-webhook.util', () => {
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
       conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
+      conversationToken: undefined,
       xChatConversationId: 'xchat-conv-abc',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
+      encodedEvent: undefined,
+      conversationKeyChangeEvent: undefined,
+      conversationKeyVersion: undefined,
     });
   });
 
@@ -101,9 +107,13 @@ describe('dm-webhook.util', () => {
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
       conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
+      conversationToken: undefined,
       xChatConversationId: 'xchat-conv-abc',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
+      encodedEvent: 'base64...',
+      conversationKeyChangeEvent: undefined,
+      conversationKeyVersion: undefined,
     });
   });
 
@@ -120,9 +130,13 @@ describe('dm-webhook.util', () => {
 
     expect(parseInboundDmFromWebhook(payload, '3012852462')).toEqual({
       conversationId: 'xchat-conv-only',
+      conversationToken: undefined,
       xChatConversationId: 'xchat-conv-only',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
+      encodedEvent: 'base64...',
+      conversationKeyChangeEvent: undefined,
+      conversationKeyVersion: undefined,
     });
   });
 
@@ -142,9 +156,13 @@ describe('dm-webhook.util', () => {
     expect(parseInboundDmFromWebhook(raw, '3012852462')).toEqual({
       conversationId: '3012852462-1345154135381794816',
       recipientId: '1345154135381794816',
+      conversationToken: undefined,
       xChatConversationId: 'xchat-from-xaa',
       inboundMessageId: 'chat-msg-1',
       inboundTextFromWebhook: undefined,
+      encodedEvent: undefined,
+      conversationKeyChangeEvent: undefined,
+      conversationKeyVersion: undefined,
     });
   });
 
@@ -168,7 +186,7 @@ describe('dm-webhook.util', () => {
         },
         '1390625949587173378',
       ),
-    ).toBe('1774607208379-1390625949587173378');
+    ).toBe('1390625949587173378-1774607208379');
   });
 
   it('parses real XAA chat.received snake_case when sender_id is the bot account', () => {
@@ -198,6 +216,9 @@ describe('dm-webhook.util', () => {
       xChatConversationId: '1390625949587173378:1390625949587173378',
       inboundMessageId: '60d9a817-bbea-43c7-84b2-c9b2345718a2',
       inboundTextFromWebhook: undefined,
+      encodedEvent: 'CwAB...',
+      conversationKeyChangeEvent: undefined,
+      conversationKeyVersion: undefined,
     });
   });
 
@@ -218,11 +239,64 @@ describe('dm-webhook.util', () => {
         '1390625949587173378',
       ),
     ).toEqual({
-      conversationId: '1774607208379-1390625949587173378',
+      conversationId: '1390625949587173378-1774607208379',
       recipientId: '1774607208379',
+      conversationToken: undefined,
       xChatConversationId: '1390625949587173378:1774607208379',
       inboundMessageId: 'msg-1',
       inboundTextFromWebhook: undefined,
+      encodedEvent: undefined,
+      conversationKeyChangeEvent: undefined,
+      conversationKeyVersion: undefined,
     });
+  });
+
+  it('extracts encoded_event, conversation_key_change_event, and conversation_key_version from XChat payload', () => {
+    const payload = {
+      for_user_id: '1390625949587173378',
+      x_chat_events: [
+        {
+          id: 'event-1',
+          sender_id: '2024635972819034112',
+          conversation_id: '1390625949587173378:2024635972819034112',
+          conversation_token: 'jwt-token',
+          encoded_event: 'AQIDBAU=',
+          conversation_key_change_event: 'WRAPPED_KEY_BLOB==',
+          conversation_key_version: '1780909207040',
+        },
+      ],
+    };
+
+    const result = parseInboundDmFromWebhook(payload, '1390625949587173378');
+    expect(result).toEqual({
+      conversationId: '1390625949587173378-2024635972819034112',
+      recipientId: '2024635972819034112',
+      conversationToken: 'jwt-token',
+      xChatConversationId: '1390625949587173378:2024635972819034112',
+      inboundMessageId: 'event-1',
+      inboundTextFromWebhook: undefined,
+      encodedEvent: 'AQIDBAU=',
+      conversationKeyChangeEvent: 'WRAPPED_KEY_BLOB==',
+      conversationKeyVersion: '1780909207040',
+    });
+  });
+
+  it('extracts camelCase encrypted XChat fields', () => {
+    const payload = {
+      x_chat_events: [
+        {
+          id: 'event-2',
+          senderId: '2024635972819034112',
+          encodedEvent: 'camelBase64==',
+          conversationKeyChangeEvent: 'camelWrapped==',
+          conversationKeyVersion: '9999999',
+        },
+      ],
+    };
+
+    const result = parseInboundDmFromWebhook(payload, '1390625949587173378');
+    expect(result?.encodedEvent).toBe('camelBase64==');
+    expect(result?.conversationKeyChangeEvent).toBe('camelWrapped==');
+    expect(result?.conversationKeyVersion).toBe('9999999');
   });
 });

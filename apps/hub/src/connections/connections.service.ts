@@ -1,9 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { RedisService } from '@app/redis';
 import { XConnection, XConnectionDocument } from '../schemas/x-connection.schema';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+
+export const XCHAT_SECRET_REDIS_PREFIX = 'xchat:secret:';
 
 @Injectable()
 export class ConnectionsService {
@@ -12,6 +15,7 @@ export class ConnectionsService {
     private readonly connectionModel: Model<XConnectionDocument>,
     private readonly webhooksService: WebhooksService,
     private readonly tokenCrypto: TokenCryptoService,
+    private readonly redis: RedisService,
   ) {}
 
   async listForOrg(orgId: string) {
@@ -39,8 +43,29 @@ export class ConnectionsService {
         webhookUrl: webhook?.webhookUrl ?? this.webhooksService.getSharedWebhookUrl(),
         subscribed: webhook?.subscribed ?? false,
         hasAuthToken: Boolean(c.authTokenEnc),
+        hasXchatPin: Boolean(c.xchatPinEnc),
       };
     });
+  }
+
+  async setXchatPin(orgId: string, connectionId: string, pin: string) {
+    const connection = await this.connectionModel.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(connectionId),
+        orgId: new Types.ObjectId(orgId),
+        revokedAt: null,
+      },
+      {
+        $set: { xchatPinEnc: this.tokenCrypto.encrypt(pin) },
+      },
+      { returnDocument: 'after' },
+    );
+    if (!connection) {
+      throw new NotFoundException('Connection not found');
+    }
+    // Invalidate L3 cache so processor re-unlocks immediately with new PIN
+    await this.redis.del(`${XCHAT_SECRET_REDIS_PREFIX}${connection.xUserId}`);
+    return { updated: true, hasXchatPin: true };
   }
 
   async setAuthToken(orgId: string, connectionId: string, authToken: string) {

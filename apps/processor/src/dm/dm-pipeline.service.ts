@@ -13,6 +13,7 @@ import {
   type XWebhookReceivedEvent,
 } from '@app/shared';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
+import { XChatDecryptService } from '../xchat/xchat-decrypt.service';
 import {
   Organization,
   OrganizationDocument,
@@ -33,6 +34,7 @@ export class DmPipelineService {
     private readonly orgModel: Model<OrganizationDocument>,
     private readonly tokenCrypto: TokenCryptoService,
     private readonly getxapi: GetxapiService,
+    private readonly xchatDecrypt: XChatDecryptService,
     private readonly llm: LlmService,
     private readonly natsJs: NatsJsService,
     private readonly config: ConfigService,
@@ -79,13 +81,6 @@ export class DmPipelineService {
       return;
     }
 
-    if (!connection.authTokenEnc) {
-      this.logger.warn(
-        `Connection ${event.connectionId} missing authTokenEnc; skipping DM reply`,
-      );
-      return;
-    }
-
     const org = await this.orgModel.findById(event.orgId);
     if (!org?.systemPrompt?.trim()) {
       this.logger.warn(
@@ -94,60 +89,132 @@ export class DmPipelineService {
       return;
     }
 
-    const authToken = this.tokenCrypto.decrypt(connection.authTokenEnc);
-    this.logger.log(
-      `Fetching GetXAPI conversation eventId=${event.eventId} ` +
-        `webhookConversation=${dmContext.conversationId} recipientHint=${dmContext.recipientId ?? 'none'}`,
-    );
-    const inboundConversation = await this.getxapi.fetchInboundConversation({
-      authToken,
-      xUserId: event.xUserId,
-      conversationId: dmContext.conversationId,
-      recipientId: dmContext.recipientId,
-      conversationToken: dmContext.conversationToken,
-      xChatConversationId: dmContext.xChatConversationId,
-    });
-    const conversation = inboundConversation.conversation;
+    let inboundText: string | null = null;
+    let recipientId: string | undefined = dmContext.recipientId;
+    let resolvedConversationId: string = dmContext.conversationId;
 
-    if (inboundConversation.conversationId !== dmContext.conversationId) {
+    const canDecryptXChat =
+      isXChat &&
+      Boolean(dmContext.encodedEvent) &&
+      Boolean(dmContext.conversationKeyChangeEvent);
+
+    if (canDecryptXChat) {
+      // XChat encrypted path — decrypt directly from webhook payload (no GetXAPI)
+      if (!connection.xchatPinEnc) {
+        this.logger.warn(
+          `Connection ${event.connectionId} has no xchatPinEnc — ` +
+            `set it via PATCH /orgs/:orgId/connections/:id/xchat-pin`,
+        );
+        return;
+      }
+      if (!connection.accessTokenSecretEnc) {
+        this.logger.warn(
+          `Connection ${event.connectionId} missing accessTokenSecretEnc; cannot unlock XChat`,
+        );
+        return;
+      }
+
+      const xchatPin = this.tokenCrypto.decrypt(connection.xchatPinEnc);
+      const accessToken = this.tokenCrypto.decrypt(connection.accessTokenEnc);
+      const accessTokenSecret = this.tokenCrypto.decrypt(
+        connection.accessTokenSecretEnc,
+      );
+
       this.logger.log(
-        `Resolved GetXAPI conversation eventId=${event.eventId} ` +
-          `${dmContext.conversationId} → ${inboundConversation.conversationId}`,
+        `XChat decrypt path eventId=${event.eventId} conversation=${dmContext.conversationId} ` +
+          `keyVersion=${dmContext.conversationKeyVersion ?? 'unknown'}`,
       );
-    }
 
-    const recipientId =
-      inboundConversation.recipientId ??
-      dmContext.recipientId ??
-      this.getxapi.extractLatestIncomingPeerId(
-        conversation.messages,
-        event.xUserId,
+      try {
+        inboundText = await this.xchatDecrypt.decryptXChatEvent({
+          xUserId: event.xUserId,
+          xchatPin,
+          accessToken,
+          accessTokenSecret,
+          encodedEvent: dmContext.encodedEvent!,
+          conversationKeyChangeEvent: dmContext.conversationKeyChangeEvent!,
+          conversationKeyVersion: dmContext.conversationKeyVersion ?? '',
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `XChat decrypt error eventId=${event.eventId}: ${message}`,
+        );
+        return;
+      }
+    } else {
+      // Legacy DM path — fetch conversation via GetXAPI
+      if (!connection.authTokenEnc) {
+        this.logger.warn(
+          `Connection ${event.connectionId} missing authTokenEnc; skipping DM reply`,
+        );
+        return;
+      }
+
+      const authToken = this.tokenCrypto.decrypt(connection.authTokenEnc);
+      this.logger.log(
+        `Fetching GetXAPI conversation eventId=${event.eventId} ` +
+          `webhookConversation=${dmContext.conversationId} recipientHint=${dmContext.recipientId ?? 'none'}`,
       );
+      const inboundConversation = await this.getxapi.fetchInboundConversation({
+        authToken,
+        xUserId: event.xUserId,
+        conversationId: dmContext.conversationId,
+        recipientId: dmContext.recipientId,
+        conversationToken: dmContext.conversationToken,
+        xChatConversationId: dmContext.xChatConversationId,
+      });
+      const conversation = inboundConversation.conversation;
+      resolvedConversationId = inboundConversation.conversationId;
+
+      if (inboundConversation.conversationId !== dmContext.conversationId) {
+        this.logger.log(
+          `Resolved GetXAPI conversation eventId=${event.eventId} ` +
+            `${dmContext.conversationId} → ${inboundConversation.conversationId}`,
+        );
+      }
+
+      recipientId =
+        inboundConversation.recipientId ??
+        dmContext.recipientId ??
+        this.getxapi.extractLatestIncomingPeerId(
+          conversation.messages,
+          event.xUserId,
+        ) ??
+        undefined;
+
+      if (!recipientId) {
+        this.logger.warn(
+          `No peer recipient for conversation ${inboundConversation.conversationId} (event ${event.eventId})`,
+        );
+        return;
+      }
+
+      inboundText =
+        this.getxapi.extractLatestIncomingPlainText(
+          conversation.messages,
+          event.xUserId,
+        ) ??
+        dmContext.inboundTextFromWebhook?.trim() ??
+        null;
+    }
 
     if (!recipientId) {
       this.logger.warn(
-        `No peer recipient for conversation ${inboundConversation.conversationId} (event ${event.eventId})`,
+        `No peer recipient for conversation ${resolvedConversationId} (event ${event.eventId})`,
       );
       return;
     }
 
-    const inboundText =
-      this.getxapi.extractLatestIncomingPlainText(
-        conversation.messages,
-        event.xUserId,
-      ) ??
-      dmContext.inboundTextFromWebhook?.trim() ??
-      null;
-
     if (!inboundText) {
       this.logger.warn(
-        `No inbound plain text for conversation ${inboundConversation.conversationId} (event ${event.eventId})`,
+        `No inbound plain text for conversation ${resolvedConversationId} (event ${event.eventId})`,
       );
       return;
     }
 
     this.logger.log(
-      `DM inbound text eventId=${event.eventId} conversation=${inboundConversation.conversationId}: ${JSON.stringify(inboundText)}`,
+      `DM inbound text eventId=${event.eventId} conversation=${resolvedConversationId}: ${JSON.stringify(inboundText)}`,
     );
 
     const unknownReply =
@@ -173,7 +240,7 @@ export class DmPipelineService {
       connectionId: event.connectionId,
       xUserId: event.xUserId,
       xUsername: event.xUsername,
-      conversationId: inboundConversation.conversationId,
+      conversationId: resolvedConversationId,
       recipientId,
       inboundMessageId: dmContext.inboundMessageId,
       inboundText,

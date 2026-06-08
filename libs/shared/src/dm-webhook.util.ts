@@ -10,15 +10,17 @@ export interface InboundDmWebhookContext {
   xChatConversationId?: string;
   inboundMessageId?: string;
   inboundTextFromWebhook?: string;
+  /** Base64 XChat encrypted message bytes — present on encrypted XChat events. */
+  encodedEvent?: string;
+  /** Base64 wrapped conversation key blob — used to unwrap the conversation key. */
+  conversationKeyChangeEvent?: string;
+  /** Key version string used for conversation key cache keying. */
+  conversationKeyVersion?: string;
 }
 
-function sortUserIds(a: string, b: string): [string, string] {
-  return BigInt(a) < BigInt(b) ? [a, b] : [b, a];
-}
-
-export function buildConversationId(userIdA: string, userIdB: string): string {
-  const [low, high] = sortUserIds(userIdA, userIdB);
-  return `${low}-${high}`;
+/** GetXAPI `/twitter/dm/conversation` expects `{for_user_id}-{sender_id}` (bot first). */
+export function buildConversationId(forUserId: string, senderId: string): string {
+  return `${forUserId}-${senderId}`;
 }
 
 /** GetXAPI /twitter/dm/conversation expects `3012852462-1345154135381794816` style ids. */
@@ -199,6 +201,19 @@ function resolveXChatPeerAndConversation(
   return { conversationId };
 }
 
+function readStringField(
+  event: Record<string, unknown>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = event[key];
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 function readInboundChatEvent(
   event: Record<string, unknown>,
   xUserId: string,
@@ -208,6 +223,17 @@ function readInboundChatEvent(
   const xChatConversationId = readRawXChatConversationId(
     event,
     payloadConversationId,
+  );
+  const encodedEvent = readStringField(event, 'encoded_event', 'encodedEvent');
+  const conversationKeyChangeEvent = readStringField(
+    event,
+    'conversation_key_change_event',
+    'conversationKeyChangeEvent',
+  );
+  const conversationKeyVersion = readStringField(
+    event,
+    'conversation_key_version',
+    'conversationKeyVersion',
   );
   const senderRaw =
     event.sender_id ??
@@ -228,6 +254,9 @@ function readInboundChatEvent(
         inboundMessageId:
           messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
         inboundTextFromWebhook: undefined,
+        encodedEvent,
+        conversationKeyChangeEvent,
+        conversationKeyVersion,
       };
     }
   }
@@ -245,6 +274,9 @@ function readInboundChatEvent(
       inboundMessageId:
         messageIdRaw !== undefined ? String(messageIdRaw) : undefined,
       inboundTextFromWebhook: undefined,
+      encodedEvent,
+      conversationKeyChangeEvent,
+      conversationKeyVersion,
     };
   }
 

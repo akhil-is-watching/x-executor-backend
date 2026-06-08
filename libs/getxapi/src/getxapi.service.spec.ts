@@ -187,7 +187,7 @@ describe('GetxapiService', () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        conversation_id: '1774607208379-1390625949587173378',
+        conversation_id: '1390625949587173378-1774607208379',
         messages: [{ id: '1', senderId: '1774607208379', text: 'hello' }],
       }),
     });
@@ -199,7 +199,7 @@ describe('GetxapiService', () => {
       conversationId: '1390625949587173378:1774607208379',
     });
 
-    expect(result.conversationId).toBe('1774607208379-1390625949587173378');
+    expect(result.conversationId).toBe('1390625949587173378-1774607208379');
     expect(result.recipientId).toBe('1774607208379');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).conversation_id).toBe(

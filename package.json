@@ -35,7 +35,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./apps/x-executor/test/jest-e2e.json"
+    "test:e2e": "jest --config ./apps/x-executor/test/jest-e2e.json",
+    "xchat:decrypt-poc": "node scripts/xchat-decrypt-poc.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -61,6 +62,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
+    "@higuchan123/twitter_lib": "^1.0.5",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",

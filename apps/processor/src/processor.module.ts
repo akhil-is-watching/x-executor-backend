@@ -7,6 +7,7 @@ import { RedisModule } from '@app/redis';
 import { LlmModule } from '@app/llm';
 import { validateEnv } from './config/validate-env';
 import { CryptoModule } from './crypto/crypto.module';
+import { XChatModule } from './xchat/xchat.module';
 import { DmPipelineService } from './dm/dm-pipeline.service';
 import { WebhookConsumerService } from './dm/webhook-consumer.service';
 import {
@@ -40,6 +41,7 @@ import { ProcessorController } from './processor.controller';
     GetxapiModule,
     LlmModule,
     CryptoModule,
+    XChatModule,
   ],
   controllers: [ProcessorController],
   providers: [DmPipelineService, WebhookConsumerService],

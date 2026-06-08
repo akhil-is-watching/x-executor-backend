@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { RedisModule } from '@app/redis';
 import { ConnectionsController } from './connections.controller';
 import { ConnectionsService } from './connections.service';
 import { XConnection, XConnectionSchema } from '../schemas/x-connection.schema';
@@ -15,6 +16,7 @@ import { CryptoModule } from '../crypto/crypto.module';
 @Module({
   imports: [
     CryptoModule,
+    RedisModule,
     WebhooksModule,
     MongooseModule.forFeature([
       { name: XConnection.name, schema: XConnectionSchema },

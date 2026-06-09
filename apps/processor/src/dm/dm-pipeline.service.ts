@@ -9,6 +9,7 @@ import {
   NatsJsService,
 } from '@app/nats-js';
 import { GetxapiService } from '@app/getxapi';
+import type { GetXApiDmMessage } from '@app/getxapi';
 import { LlmService } from '@app/llm';
 import {
   isInboundDmWebhook,
@@ -103,6 +104,9 @@ export class DmPipelineService {
     let inboundText: string | null = null;
     let recipientId: string | undefined = dmContext.recipientId;
     let resolvedConversationId: string = dmContext.conversationId;
+    let conversationHistory:
+      | Array<{ role: 'user' | 'assistant'; content: string }>
+      | undefined;
 
     const canDecryptXChat =
       isXChat &&
@@ -224,6 +228,12 @@ export class DmPipelineService {
           ) ??
           webhookText ??
           null;
+
+        conversationHistory = this.extractHistory(
+          conversation.messages,
+          event.xUserId,
+          10,
+        );
       }
     }
 
@@ -256,6 +266,7 @@ export class DmPipelineService {
       systemPrompt: org.systemPrompt.trim(),
       unknownReply,
       userMessage: inboundText,
+      conversationHistory,
     });
 
     this.logger.log(
@@ -318,5 +329,36 @@ export class DmPipelineService {
       `Published campaign reply analytics campaignId=${analyticsEvent.campaignId} ` +
         `jobId=${analyticsEvent.jobId} from recipient=${recipientId}`,
     );
+  }
+
+  private extractHistory(
+    messages: GetXApiDmMessage[] | undefined,
+    botXUserId: string,
+    limit: number,
+  ): Array<{ role: 'user' | 'assistant'; content: string }> {
+    const chronological = [...(messages ?? [])].reverse();
+    const mapped = chronological
+      .map((message) => {
+        const text = message.text?.trim();
+        if (!text) {
+          return null;
+        }
+        const senderId = message.senderId ?? message.sender_id;
+        const role =
+          senderId && String(senderId) === String(botXUserId)
+            ? 'assistant'
+            : 'user';
+        return { role, content: text } as const;
+      })
+      .filter(
+        (entry): entry is { role: 'user' | 'assistant'; content: string } =>
+          entry !== null,
+      );
+
+    if (mapped.length > 0 && mapped[mapped.length - 1]?.role === 'user') {
+      mapped.pop();
+    }
+
+    return mapped.slice(-limit);
   }
 }

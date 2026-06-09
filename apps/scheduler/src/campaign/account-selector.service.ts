@@ -17,6 +17,7 @@ export interface PlannedJobInput {
   campaignId: string;
   orgId: string;
   messageText: string;
+  hourlyLimitOverride?: number;
 }
 
 export interface PlannedJob {
@@ -79,6 +80,9 @@ export class AccountSelectorService {
       throw new Error('No eligible accounts with auth tokens available');
     }
 
+    const effectiveHourlyLimit =
+      input.hourlyLimitOverride ?? this.hourlyLimit;
+
     const sendCounts = await this.loadSendCounts(accounts);
     const shuffledTargets = shuffle(targetUsernames);
     const accountNextTime = new Map<string, number>();
@@ -106,7 +110,7 @@ export class AccountSelectorService {
           ).length;
 
           return (
-            counts.lastHour + plannedForAccount < this.hourlyLimit &&
+            counts.lastHour + plannedForAccount < effectiveHourlyLimit &&
             counts.today + plannedForAccount < this.dailyLimit
           );
         });

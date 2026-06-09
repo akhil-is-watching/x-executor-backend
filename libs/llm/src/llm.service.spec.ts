@@ -183,4 +183,31 @@ describe('LlmService', () => {
     expect(result.isKnownAnswer).toBe(false);
     expect(result.replyText).toBe("I don't know");
   });
+
+  it('includes conversation history in OpenAI messages', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: '{"reply":"We ship on Fridays."}' } }],
+    });
+
+    await service.generateReply({
+      systemPrompt: 'Shipping is on Fridays.',
+      unknownReply: "I don't know",
+      userMessage: 'When do you ship?',
+      conversationHistory: [
+        { role: 'user', content: 'Hi there' },
+        { role: 'assistant', content: 'Hello!' },
+      ],
+    });
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          expect.objectContaining({ role: 'system' }),
+          { role: 'user', content: 'Hi there' },
+          { role: 'assistant', content: 'Hello!' },
+          { role: 'user', content: 'When do you ship?' },
+        ],
+      }),
+    );
+  });
 });

@@ -26,6 +26,9 @@ export class Campaign {
   @Prop({ required: true })
   totalTargets!: number;
 
+  @Prop({ default: 15 })
+  dmsPerHour!: number;
+
   @Prop({ default: 0 })
   messagesSent!: number;
 

@@ -37,6 +37,7 @@ export class CampaignsService {
       messageText: dto.messageText.trim(),
       targetUsernames,
       totalTargets: targetUsernames.length,
+      dmsPerHour: dto.dmsPerHour ?? 15,
       messagesSent: 0,
       messagesScheduled: 0,
       repliesReceived: 0,
@@ -49,6 +50,7 @@ export class CampaignsService {
       targetUsernames,
       messageText: campaign.messageText,
       createdAt: campaign.createdAt.toISOString(),
+      dmsPerHour: campaign.dmsPerHour,
     };
 
     await this.natsJs.publishJson(NATS_SUBJECT_CAMPAIGN_CREATED, event);
@@ -57,6 +59,7 @@ export class CampaignsService {
       id: campaign._id.toString(),
       status: campaign.status,
       totalTargets: campaign.totalTargets,
+      dmsPerHour: campaign.dmsPerHour,
       messageText: campaign.messageText,
       targetUsernames: campaign.targetUsernames,
       createdAt: campaign.createdAt,
@@ -91,6 +94,7 @@ export class CampaignsService {
       messageText: campaign.messageText,
       targetUsernames: campaign.targetUsernames,
       totalTargets: campaign.totalTargets,
+      dmsPerHour: campaign.dmsPerHour,
       messagesScheduled: campaign.messagesScheduled,
       messagesSent: campaign.messagesSent,
       repliesReceived: campaign.repliesReceived,

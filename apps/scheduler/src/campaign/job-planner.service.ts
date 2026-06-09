@@ -79,6 +79,7 @@ export class JobPlannerService {
         campaignId: event.campaignId,
         orgId: event.orgId,
         messageText: event.messageText,
+        hourlyLimitOverride: campaign.dmsPerHour ?? event.dmsPerHour ?? 15,
       },
     );
 

@@ -4,4 +4,5 @@ export interface CampaignCreatedEvent {
   targetUsernames: string[];
   messageText: string;
   createdAt: string;
+  dmsPerHour: number;
 }

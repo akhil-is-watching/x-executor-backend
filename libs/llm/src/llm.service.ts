@@ -6,6 +6,7 @@ export interface GenerateReplyParams {
   systemPrompt: string;
   unknownReply: string;
   userMessage: string;
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 export interface GenerateReplyResult {
@@ -94,7 +95,8 @@ export class LlmService {
   }
 
   async generateReply(params: GenerateReplyParams): Promise<GenerateReplyResult> {
-    const { systemPrompt, unknownReply, userMessage } = params;
+    const { systemPrompt, unknownReply, userMessage, conversationHistory } =
+      params;
 
     const systemContent = [
       'You answer questions using ONLY the knowledge block below.',
@@ -116,6 +118,10 @@ export class LlmService {
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: systemContent },
+        ...(conversationHistory ?? []).map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
         { role: 'user', content: userMessage },
       ],
     });

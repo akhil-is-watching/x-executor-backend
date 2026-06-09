@@ -3,62 +3,87 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import * as bcrypt from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
 import { Model } from 'mongoose';
+import * as bcrypt from 'bcrypt';
+import { User, UserDocument } from '../schemas/user.schema';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { User, UserDocument } from '../schemas/user.schema';
+import { AuthResponse } from './auth.types';
+
+const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
-    private readonly jwtService: JwtService,
+    private readonly jwt: JwtService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<{ accessToken: string }> {
-    const existing = await this.userModel.findOne({ email: dto.email });
+  async register(dto: RegisterDto): Promise<AuthResponse> {
+    const email = dto.email.trim().toLowerCase();
+    const existing = await this.userModel.findOne({ email }).select('_id').lean();
     if (existing) {
-      throw new ConflictException('Email already registered');
+      throw new ConflictException('Email is already registered');
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const user = await this.userModel.create({
-      email: dto.email,
+      email,
       passwordHash,
+      orgId: 'pending',
     });
 
-    return { accessToken: this.signToken(user) };
+    user.orgId = user._id.toString();
+    await user.save();
+
+    return this.buildAuthResponse(user);
   }
 
-  async login(dto: LoginDto): Promise<{ accessToken: string }> {
-    const user = await this.userModel.findOne({ email: dto.email });
+  async login(dto: LoginDto): Promise<AuthResponse> {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.userModel.findOne({ email }).select('+passwordHash');
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Invalid email or password');
     }
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Invalid email or password');
     }
 
-    return { accessToken: this.signToken(user) };
+    return this.buildAuthResponse(user);
   }
 
-  async getMe(userId: string): Promise<{ id: string; email: string }> {
+  async getMe(userId: string): Promise<AuthResponse['user']> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    return { id: user._id.toString(), email: user.email };
+
+    return {
+      id: user._id.toString(),
+      email: user.email,
+      orgId: user.orgId,
+    };
   }
 
-  private signToken(user: UserDocument): string {
-    return this.jwtService.sign({
-      sub: user._id.toString(),
+  private buildAuthResponse(user: UserDocument): AuthResponse {
+    const id = user._id.toString();
+    const payload = {
+      sub: id,
       email: user.email,
-    });
+      orgId: user.orgId,
+    };
+
+    return {
+      accessToken: this.jwt.sign(payload),
+      user: {
+        id,
+        email: user.email,
+        orgId: user.orgId,
+      },
+    };
   }
 }

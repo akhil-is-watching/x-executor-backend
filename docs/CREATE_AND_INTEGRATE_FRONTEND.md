@@ -85,9 +85,9 @@ flowchart LR
    - App permissions: **Read, Write, and Direct Messages**
    - **Account Activity API** product access on the app
    - Callback URL on Hub (must match exactly):
-     - Local: `http://localhost:3000/api/v1/oauth/x/callback`
-     - Production: `https://<hub-domain>/api/v1/oauth/x/callback`
-3. **Shared webhook URL** (one per deployment): `{WEBHOOK_PUBLIC_BASE_URL}/api/v1/webhooks/incoming` — registered when users connect if `X_REGISTER_WEBHOOKS_WITH_X=true`.
+     - Local: `http://localhost:3000/xbot/v1/api/oauth/x/callback`
+     - Production: `https://<hub-domain>/xbot/v1/api/oauth/x/callback`
+3. **Shared webhook URL** (one per deployment): `{WEBHOOK_PUBLIC_BASE_URL}/xbot/v1/api/webhooks/incoming` — registered when users connect if `X_REGISTER_WEBHOOKS_WITH_X=true`.
 
 ### Start Hub locally
 
@@ -97,7 +97,7 @@ yarn install
 yarn start:hub:dev
 ```
 
-Hub listens on `PORT` (default **3000**). Health: `GET /` → `{ "status": "ok" }`. Business routes use **`/api/v1`**.
+Hub listens on `PORT` (default **3000**). Health: `GET /xbot/v1/api/health` → `{ "status": "ok" }`. Business routes use **`/xbot/v1/api`**.
 
 ```bash
 yarn test:hub:e2e
@@ -130,7 +130,7 @@ Set these on **Hub** (not only in the frontend):
 | `HUB_PUBLIC_BASE_URL` | Public Hub URL; used in `inviteUrl` |
 | `WEBHOOK_PUBLIC_BASE_URL` | Shared webhook ingress (Webhook service) |
 | `OAUTH_SUCCESS_REDIRECT_URL` | After X OAuth, redirect browser here (SPA success page) |
-| `X_REDIRECT_URI` | Stays on **Hub** (`/api/v1/oauth/x/callback`) |
+| `X_REDIRECT_URI` | Stays on **Hub** (`/xbot/v1/api/oauth/x/callback`) |
 | `X_API_KEY` / `X_API_KEY_SECRET` | OAuth 1.0a Consumer Keys |
 | `X_REGISTER_WEBHOOKS_WITH_X` | `true` to register webhook + subscribe on connect |
 | `NATS_URL` | Required for campaign create (`x.campaign.created` publish) |
@@ -159,11 +159,11 @@ server: {
 },
 ```
 
-Use an empty API base in dev so requests hit `/api/v1/...` via the proxy.
+Use an empty API base in dev so requests hit `/xbot/v1/api/...` via the proxy.
 
 ### Option B — Separate repo (recommended pattern)
 
-The reference app uses **Bun** with a small server proxy (`src/hub-proxy.ts`): browser calls same-origin `/api/v1/*`, server forwards to `HUB_API_URL`.
+The reference app uses **Bun** with a small server proxy (`src/hub-proxy.ts`): browser calls same-origin `/xbot/v1/api/*`, server forwards to `HUB_API_URL`.
 
 On **Vercel** (static `dist/`), skip the proxy: set `PUBLIC_HUB_API_URL` to the Hub origin at **build time**. Hub enables CORS (`origin: '*'` in `apps/hub/src/main.ts`).
 
@@ -181,9 +181,9 @@ Hub uses **JWT** bearer tokens (email/password — separate from X OAuth).
 
 | Endpoint | Auth | Body |
 |----------|------|------|
-| `POST /api/v1/auth/register` | None | `{ "email", "password" }` — password min 8 chars |
-| `POST /api/v1/auth/login` | None | `{ "email", "password" }` |
-| `GET /api/v1/auth/me` | Bearer | — |
+| `POST /xbot/v1/api/auth/register` | None | `{ "email", "password" }` — password min 8 chars |
+| `POST /xbot/v1/api/auth/login` | None | `{ "email", "password" }` |
+| `GET /xbot/v1/api/auth/me` | Bearer | — |
 
 Response: `{ "accessToken": "<jwt>" }`. Store in `localStorage` (or httpOnly cookie via BFF if required).
 
@@ -201,7 +201,7 @@ export async function hubFetch<T>(
   options: RequestInit & { token?: string } = {},
 ): Promise<T> {
   const { token, headers, ...rest } = options;
-  const res = await fetch(`${base}/api/v1${path}`, {
+  const res = await fetch(`${base}/xbot/v1/api${path}`, {
     ...rest,
     headers: {
       'Content-Type': 'application/json',
@@ -228,8 +228,8 @@ Grouped helpers: `authApi`, `orgsApi`, `invitesApi`, `connectionsApi`, **`campai
 ### 1. Admin onboarding
 
 1. Register → save `accessToken`.
-2. `POST /api/v1/orgs` with `{ "name": "Acme" }` (optional `slug`).
-3. `GET /api/v1/orgs` → each org includes `role` (`owner` | `admin` | `member`).
+2. `POST /xbot/v1/api/orgs` with `{ "name": "Acme" }` (optional `slug`).
+3. `GET /xbot/v1/api/orgs` → each org includes `role` (`owner` | `admin` | `member`).
 
 **Owner/admin only:** invites, prompts, members, revoke connections, set auth tokens, set XChat PINs, **create campaigns**.
 
@@ -237,8 +237,8 @@ Grouped helpers: `authApi`, `orgsApi`, `invitesApi`, `connectionsApi`, **`campai
 
 ### 2. Invite link for X users
 
-1. `POST /api/v1/orgs/:orgId/invites` — optional `{ "expiresInHours": 24, "maxUses": 5 }` (defaults: 168h, unlimited).
-2. Response: `inviteToken`, `inviteUrl` = `{HUB_PUBLIC_BASE_URL}/api/v1/oauth/x/start?invite=<token>`.
+1. `POST /xbot/v1/api/orgs/:orgId/invites` — optional `{ "expiresInHours": 24, "maxUses": 5 }` (defaults: 168h, unlimited).
+2. Response: `inviteToken`, `inviteUrl` = `{HUB_PUBLIC_BASE_URL}/xbot/v1/api/oauth/x/start?invite=<token>`.
 
 Show **Open connect page** or copy `inviteUrl`. Branded flow: `/connect/:token`.
 
@@ -246,11 +246,11 @@ Show **Open connect page** or copy `inviteUrl`. Branded flow: `/connect/:token`.
 
 Route: `/connect/:token`
 
-1. `GET /api/v1/invites/:token` (no auth) → `{ orgName, expired, revoked, maxUsesReached, ... }`.
+1. `GET /xbot/v1/api/invites/:token` (no auth) → `{ orgName, expired, revoked, maxUsesReached, ... }`.
 2. If valid, navigate to OAuth start (full page redirect, not `fetch`):
 
    ```
-   {HUB_PUBLIC_BASE_URL}/api/v1/oauth/x/start?invite={token}
+   {HUB_PUBLIC_BASE_URL}/xbot/v1/api/oauth/x/start?invite={token}
    ```
 
 ### 4. OAuth success page
@@ -261,7 +261,7 @@ Display query params: `orgId`, `xUserId`, `xUsername`, `webhookUrl`, `subscribed
 
 ### 5. Connections (members can view; admin can mutate)
 
-`GET /api/v1/orgs/:orgId/connections`
+`GET /xbot/v1/api/orgs/:orgId/connections`
 
 ```json
 [
@@ -271,7 +271,7 @@ Display query params: `orgId`, `xUserId`, `xUsername`, `webhookUrl`, `subscribed
     "xUsername": "handle",
     "scopes": [],
     "connectedAt": "...",
-    "webhookUrl": "https://webhook.../api/v1/webhooks/incoming",
+    "webhookUrl": "https://webhook.../xbot/v1/api/webhooks/incoming",
     "subscribed": true,
     "hasAuthToken": false,
     "hasXchatPin": false
@@ -341,7 +341,7 @@ await orgsApi.updatePrompt(token, orgId, {
 
 ### 8. Members (admin)
 
-`GET /api/v1/orgs/:orgId/members` → `{ userId, email, role, joinedAt }[]`
+`GET /xbot/v1/api/orgs/:orgId/members` → `{ userId, email, role, joinedAt }[]`
 
 ### 9. Campaign DMs (bulk outbound)
 
@@ -358,7 +358,7 @@ Campaign sends do **not** require org `systemPrompt` (that is only for inbound L
 
 #### Create campaign (admin only)
 
-`POST /api/v1/orgs/:orgId/campaigns`
+`POST /xbot/v1/api/orgs/:orgId/campaigns`
 
 ```json
 {
@@ -390,7 +390,7 @@ After create, redirect to a **campaign detail / progress** route (e.g. `/orgs/:o
 
 #### Campaign status (member or admin)
 
-`GET /api/v1/orgs/:orgId/campaigns/:campaignId/status`
+`GET /xbot/v1/api/orgs/:orgId/campaigns/:campaignId/status`
 
 ```json
 {
@@ -592,7 +592,7 @@ See also `x-executor-frontend/README.md` → **Connection readiness**.
 
 ## Full API reference (Hub)
 
-Base: `{HUB_ORIGIN}/api/v1`
+Base: `{HUB_ORIGIN}/xbot/v1/api`
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
@@ -751,7 +751,7 @@ API client: `connectionsApi.setXchatPin()` in `x-executor-frontend/src/lib/hub/a
 
 | Path | Role |
 |------|------|
-| `apps/hub/src/main.ts` | Global prefix `api/v1`, CORS |
+| `apps/hub/src/main.ts` | Global prefix `xbot/v1/api`, CORS |
 | `apps/hub/src/connections/` | Connections list, `auth-token`, **`xchat-pin`** |
 | `apps/hub/src/campaigns/` | **Campaign create + status API** |
 | `apps/hub/src/oauth/` | OAuth 1.0a flow |

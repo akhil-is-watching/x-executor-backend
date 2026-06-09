@@ -20,7 +20,7 @@ export class ConnectionDto {
   tokenExpiresAt?: Date;
 
   @ApiPropertyOptional({
-    example: 'https://webhook.example.com/api/v1/webhooks/incoming',
+    example: 'https://webhook.example.com/xbot/v1/api/webhooks/incoming',
   })
   webhookUrl?: string;
 

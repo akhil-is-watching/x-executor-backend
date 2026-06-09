@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { API_GLOBAL_PREFIX } from '@app/shared';
 import { HubModule } from './hub.module';
 
 async function bootstrap() {
@@ -10,7 +11,7 @@ async function bootstrap() {
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
-  app.setGlobalPrefix('api/v1', { exclude: ['/'] });
+  app.setGlobalPrefix(API_GLOBAL_PREFIX);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

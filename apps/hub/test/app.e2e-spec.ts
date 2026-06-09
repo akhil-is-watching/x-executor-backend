@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
 import { randomBytes } from 'crypto';
+import { API_GLOBAL_PREFIX } from '@app/shared';
 import { XApiService } from '../src/oauth/x-api.service';
 import { RedisService } from '@app/redis';
 import { OAuthStateStore } from '../src/oauth/oauth-state.store';
@@ -62,7 +63,7 @@ describe('Hub (e2e)', () => {
     process.env.X_API_KEY = 'test-api-key';
     process.env.X_API_KEY_SECRET = 'test-api-secret';
     process.env.X_REDIRECT_URI =
-      'http://localhost:3000/api/v1/oauth/x/callback';
+      `http://localhost:3000/${API_GLOBAL_PREFIX}/oauth/x/callback`;
     process.env.X_REGISTER_WEBHOOKS_WITH_X = 'false';
 
     HubModule = require('../src/hub.module').HubModule;
@@ -77,7 +78,7 @@ describe('Hub (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api/v1', { exclude: ['/'] });
+    app.setGlobalPrefix(API_GLOBAL_PREFIX);
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
@@ -93,16 +94,16 @@ describe('Hub (e2e)', () => {
     }
   });
 
-  it('GET / health', () => {
+  it('GET /xbot/v1/api/health', () => {
     return request(app.getHttpServer())
-      .get('/')
+      .get('/xbot/v1/api/health')
       .expect(200)
       .expect({ status: 'ok' });
   });
 
   it('registers, creates org, invite, oauth callback, lists connection', async () => {
     const register = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
+      .post('/xbot/v1/api/auth/register')
       .send({ email: 'owner@example.com', password: 'password123' })
       .expect(201);
 
@@ -110,7 +111,7 @@ describe('Hub (e2e)', () => {
     expect(token).toBeDefined();
 
     const org = await request(app.getHttpServer())
-      .post('/api/v1/orgs')
+      .post('/xbot/v1/api/orgs')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Acme Corp' })
       .expect(201);
@@ -118,7 +119,7 @@ describe('Hub (e2e)', () => {
     const orgId = org.body.id;
 
     const invite = await request(app.getHttpServer())
-      .post(`/api/v1/orgs/${orgId}/invites`)
+      .post(`/xbot/v1/api/orgs/${orgId}/invites`)
       .set('Authorization', `Bearer ${token}`)
       .send({ expiresInHours: 24, maxUses: 5 })
       .expect(201);
@@ -131,17 +132,17 @@ describe('Hub (e2e)', () => {
     });
 
     const callback = await request(app.getHttpServer())
-      .get('/api/v1/oauth/x/callback')
+      .get('/xbot/v1/api/oauth/x/callback')
       .query({ oauth_token: oauthToken, oauth_verifier: 'oauth-verifier-test' })
       .expect(200);
 
     expect(callback.body.webhookUrl).toBe(
-      'http://localhost:3001/api/v1/webhooks/incoming',
+      'http://localhost:3001/xbot/v1/api/webhooks/incoming',
     );
     expect(callback.body.subscribed).toBe(false);
 
     const connections = await request(app.getHttpServer())
-      .get(`/api/v1/orgs/${orgId}/connections`)
+      .get(`/xbot/v1/api/orgs/${orgId}/connections`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 

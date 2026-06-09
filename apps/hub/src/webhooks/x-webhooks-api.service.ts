@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { API_GLOBAL_PREFIX } from '@app/shared';
 import { TwitterApi } from 'twitter-api-v2';
 import {
   parseActivitySubscriptionId,
@@ -38,7 +39,7 @@ export class XWebhooksApiService {
     const base = this.config
       .getOrThrow<string>('WEBHOOK_PUBLIC_BASE_URL')
       .replace(/\/$/, '');
-    return `${base}/api/v1/webhooks/incoming`;
+    return `${base}/${API_GLOBAL_PREFIX}/webhooks/incoming`;
   }
 
   async ensureAppWebhookRegistered(): Promise<string> {

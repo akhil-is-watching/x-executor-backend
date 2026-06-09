@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { API_GLOBAL_PREFIX } from '@app/shared';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CreateInviteDto } from './dto/create-invite.dto';
@@ -133,6 +134,6 @@ export class InvitesService {
       /\/$/,
       '',
     );
-    return `${base}/api/v1/oauth/x/start?invite=${encodeURIComponent(token)}`;
+    return `${base}/${API_GLOBAL_PREFIX}/oauth/x/start?invite=${encodeURIComponent(token)}`;
   }
 }

@@ -30,7 +30,7 @@ export class WebhookController {
     private readonly config: ConfigService,
   ) {}
 
-  @Get()
+  @Get('health')
   health() {
     return { status: 'ok' };
   }

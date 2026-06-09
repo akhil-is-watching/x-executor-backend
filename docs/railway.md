@@ -43,7 +43,7 @@ For local development, the root `.env.example` still lists all variables in one 
      NATS_URL=nats://${{Nats.RAILWAY_PRIVATE_DOMAIN}}:4222
      HUB_PUBLIC_BASE_URL=https://${{Hub.RAILWAY_PUBLIC_DOMAIN}}
      WEBHOOK_PUBLIC_BASE_URL=https://${{Webhook.RAILWAY_PUBLIC_DOMAIN}}
-     X_REDIRECT_URI=https://${{Hub.RAILWAY_PUBLIC_DOMAIN}}/api/v1/oauth/x/callback
+     X_REDIRECT_URI=https://${{Hub.RAILWAY_PUBLIC_DOMAIN}}/xbot/v1/api/oauth/x/callback
      ```
      Rename `Nats` in references to match your Railway service name.
 
@@ -56,7 +56,7 @@ For local development, the root `.env.example` still lists all variables in one 
 
 ## Health checks
 
-Nest apps expose `GET /` → `{ "status": "ok" }` (`healthcheckPath = "/"`).
+Nest apps expose `GET /xbot/v1/api/health` → `{ "status": "ok" }` (`healthcheckPath = "/xbot/v1/api/health"`).
 
 NATS: set service variable `PORT=8222` so Railway hits `GET /healthz` on the HTTP monitor (see `docs/env/nats.env.example`). Client apps still use `NATS_URL` on port `4222`.
 
@@ -64,7 +64,7 @@ NATS: set service variable `PORT=8222` so Railway hits `GET /healthz` on the HTT
 
 All connections use one ingress URL on the Webhook service:
 
-`https://<webhook-service>/api/v1/webhooks/incoming`
+`https://<webhook-service>/xbot/v1/api/webhooks/incoming`
 
 On each X OAuth (OAuth 1.0a 3-legged), Hub:
 
@@ -76,18 +76,18 @@ The Webhook app routes events by `for_user_id` in the payload (fans out if the s
 
 **Webhook must use the same `MONGODB_URI` as Hub** so `x_connections` rows exist for routing.
 
-**No POSTs in Webhook logs?** Your URL is reachable if `GET /` and CRC work; silence means **X is not sending events** (not a Nest bug). Checklist:
+**No POSTs in Webhook logs?** Your URL is reachable if `GET /xbot/v1/api/health` and CRC work; silence means **X is not sending events** (not a Nest bug). Checklist:
 
 1. In Developer Portal → **Webhooks**, confirm config `2062592785111478272` (or latest Hub log id) shows **Valid** — invalid webhooks receive no events ([docs](https://docs.x.com/x-api/webhooks/introduction)).
 2. Re-OAuth after deploy (Hub logs `valid=true` and may trigger `PUT /2/webhooks/:id` CRC if invalid).
-3. Test with a **favorite** on the subscribed account’s tweet ([quickstart](https://docs.x.com/x-api/account-activity/quickstart)), wait ~10s; watch Webhook for `HTTP POST /api/v1/webhooks/incoming`.
+3. Test with a **favorite** on the subscribed account’s tweet ([quickstart](https://docs.x.com/x-api/account-activity/quickstart)), wait ~10s; watch Webhook for `HTTP POST /xbot/v1/api/webhooks/incoming`.
 4. **DMs:** some conversations use XChat encryption — X API sends **no webhook** for those ([known limitation](https://github.com/aws-samples/sample-amazon-connect-social-integration/blob/main/x_setup.md)).
 5. Prove logging: signed POST test (replace `YOUR_API_KEY_SECRET`):
 
 ```bash
 BODY='{"for_user_id":"1390625949587173378","tweet_create_events":[]}'
 SIG=$(node -e "const c=require('crypto');const b=process.argv[1];const s=process.argv[2];console.log('sha256='+c.createHmac('sha256',s).update(b).digest('base64'))" "$BODY" "YOUR_API_KEY_SECRET")
-curl -sS -X POST "https://webhook-x-executor.up.railway.app/api/v1/webhooks/incoming" \
+curl -sS -X POST "https://webhook-x-executor.up.railway.app/xbot/v1/api/webhooks/incoming" \
   -H "Content-Type: application/json" \
   -H "x-twitter-webhooks-signature: $SIG" \
   -d "$BODY"
@@ -115,7 +115,7 @@ Webhook publishes to JetStream subject `x.webhook.received` after a successful P
    ```bash
    NATS_URL=nats://${{Nats.RAILWAY_PRIVATE_DOMAIN}}:4222
    ```
-2. **Processor service is running** — it has no public URL; confirm deploy is healthy (`GET /` on its internal port).
+2. **Processor service is running** — it has no public URL; confirm deploy is healthy (`GET /xbot/v1/api/health` on its internal port).
 3. **Webhook shows NATS publish** — if you see `X webhook processed → 1 NATS event(s)` but no `Published x.webhook.received`, redeploy Webhook with latest code or check for publish errors in logs.
 4. **Favorites / tweets are not DMs** — Processor **ignores** non-`direct_message_events` after logging `Skipping non-DM`. A favorite test proves Webhook → NATS → Processor; it will **not** run the DM/LLM pipeline.
 5. **DM pipeline prerequisites** (after `Processing DM`): same `MONGODB_URI` as Hub, org **system prompt** set, connection **auth token** set in admin UI, `TOKEN_ENCRYPTION_KEY` matches Hub, GetXAPI/OpenAI/Redis env on Processor.
@@ -130,7 +130,7 @@ Webhook publishes to JetStream subject `x.webhook.received` after a successful P
 - `WEBHOOK_PUBLIC_BASE_URL` — public HTTPS Webhook service (CRC + POST target).
 - **Webhook service CRC:** set `X_CONSUMER_SECRET` to the **API Key Secret** (same as `X_API_KEY_SECRET`).
 
-**CRC error `Invalid response_token`:** almost always wrong secret or wrong URL path. Register exactly `https://<webhook-host>/api/v1/webhooks/incoming` (no trailing slash). On the **Webhook** Railway service, set `X_CONSUMER_SECRET` to the API Key Secret, redeploy, then re-validate in X console.
+**CRC error `Invalid response_token`:** almost always wrong secret or wrong URL path. Register exactly `https://<webhook-host>/xbot/v1/api/webhooks/incoming` (no trailing slash). On the **Webhook** Railway service, set `X_CONSUMER_SECRET` to the API Key Secret, redeploy, then re-validate in X console.
 
 Requires **Account Activity API** access on your X app. After deploy, re-connect X accounts; delete old per-user webhook configs in the Developer Console if any remain.
 

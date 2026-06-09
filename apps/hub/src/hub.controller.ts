@@ -3,7 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HealthResponseDto } from './common/dto/health-response.dto';
 
 @ApiTags('Health')
-@Controller()
+@Controller('health')
 export class HubController {
   @Get()
   @ApiOperation({ summary: 'Health check' })

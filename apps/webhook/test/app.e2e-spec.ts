@@ -7,6 +7,7 @@ import { createHmac } from 'crypto';
 import { Types } from 'mongoose';
 import { NatsJsService } from '@app/nats-js';
 import type { XWebhookReceivedEvent } from '@app/shared';
+import { API_GLOBAL_PREFIX } from '@app/shared';
 import { XConnection } from '../src/schemas/x-connection.schema';
 import { createCrcResponse } from '../src/x-webhook.crypto';
 import { SHARED_WEBHOOK_ID } from '../src/incoming/incoming.service';
@@ -51,7 +52,7 @@ describe('Webhook (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication({ rawBody: true });
-    app.setGlobalPrefix('api/v1', { exclude: ['/'] });
+    app.setGlobalPrefix(API_GLOBAL_PREFIX);
     await app.init();
   }, 120_000);
 
@@ -69,9 +70,9 @@ describe('Webhook (e2e)', () => {
     jest.clearAllMocks();
   });
 
-  it('GET / health', () => {
+  it('GET /xbot/v1/api/health', () => {
     return request(app.getHttpServer())
-      .get('/')
+      .get('/xbot/v1/api/health')
       .expect(200)
       .expect({ status: 'ok' });
   });
@@ -92,7 +93,7 @@ describe('Webhook (e2e)', () => {
     });
 
     const crc = await request(app.getHttpServer())
-      .get('/api/v1/webhooks/incoming')
+      .get('/xbot/v1/api/webhooks/incoming')
       .query({ crc_token: 'crc-challenge' })
       .expect(200);
 
@@ -108,7 +109,7 @@ describe('Webhook (e2e)', () => {
     const signature = signWebhookBody(rawBody, process.env.X_CLIENT_SECRET!);
 
     const received = await request(app.getHttpServer())
-      .post('/api/v1/webhooks/incoming')
+      .post('/xbot/v1/api/webhooks/incoming')
       .set('Content-Type', 'application/json')
       .set('x-twitter-webhooks-signature', signature)
       .send(rawBody)
@@ -129,7 +130,7 @@ describe('Webhook (e2e)', () => {
     });
 
     await request(app.getHttpServer())
-      .post('/api/v1/webhooks/incoming')
+      .post('/xbot/v1/api/webhooks/incoming')
       .set('Content-Type', 'application/json')
       .set('x-twitter-webhooks-signature', 'sha256=invalid')
       .send(rawBody)

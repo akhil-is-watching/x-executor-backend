@@ -13,6 +13,7 @@ import { ConnectionsModule } from './connections/connections.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
+import { ChatsModule } from './chats/chats.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { CampaignsModule } from './campaigns/campaigns.module';
     ConnectionsModule,
     WebhooksModule,
     CampaignsModule,
+    ChatsModule,
   ],
   controllers: [HubController],
 })

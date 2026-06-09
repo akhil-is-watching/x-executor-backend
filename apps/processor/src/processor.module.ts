@@ -22,6 +22,10 @@ import {
   CampaignJob,
   CampaignJobSchema,
 } from './schemas/campaign-job.schema';
+import {
+  DmMessage,
+  DmMessageSchema,
+} from './schemas/dm-message.schema';
 import { ProcessorController } from './processor.controller';
 
 @Module({
@@ -40,6 +44,7 @@ import { ProcessorController } from './processor.controller';
       { name: XConnection.name, schema: XConnectionSchema },
       { name: Organization.name, schema: OrganizationSchema },
       { name: CampaignJob.name, schema: CampaignJobSchema },
+      { name: DmMessage.name, schema: DmMessageSchema },
     ]),
     NatsJsModule,
     RedisModule,

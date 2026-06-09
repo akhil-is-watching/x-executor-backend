@@ -11,6 +11,7 @@ import { XChatDecryptService } from '../xchat/xchat-decrypt.service';
 import { Organization } from '../schemas/organization.schema';
 import { XConnection } from '../schemas/x-connection.schema';
 import { CampaignJob } from '../schemas/campaign-job.schema';
+import { DmMessage } from '../schemas/dm-message.schema';
 import { DmPipelineService } from './dm-pipeline.service';
 import { randomBytes } from 'crypto';
 
@@ -33,6 +34,7 @@ describe('DmPipelineService', () => {
   const connectionModel = { findOne: jest.fn() };
   const orgModel = { findById: jest.fn() };
   const campaignJobModel = { findOne: jest.fn() };
+  const dmMessageModel = { insertMany: jest.fn() };
 
   const baseEvent: XWebhookReceivedEvent = {
     eventId: 'evt-1',
@@ -86,6 +88,7 @@ describe('DmPipelineService', () => {
       isKnownAnswer: true,
     });
     campaignJobModel.findOne.mockResolvedValue(null);
+    dmMessageModel.insertMany.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -111,6 +114,7 @@ describe('DmPipelineService', () => {
         { provide: getModelToken(XConnection.name), useValue: connectionModel },
         { provide: getModelToken(Organization.name), useValue: orgModel },
         { provide: getModelToken(CampaignJob.name), useValue: campaignJobModel },
+        { provide: getModelToken(DmMessage.name), useValue: dmMessageModel },
       ],
     }).compile();
 
@@ -141,6 +145,17 @@ describe('DmPipelineService', () => {
         isKnownAnswer: true,
       }),
     );
+    expect(dmMessageModel.insertMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        direction: 'inbound',
+        text: 'hello',
+      }),
+      expect.objectContaining({
+        direction: 'outbound',
+        text: 'We sell blue widgets.',
+        isKnownAnswer: true,
+      }),
+    ]);
   });
 
   it('falls back to GetXAPI when legacy webhook has no message text', async () => {

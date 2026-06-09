@@ -32,6 +32,10 @@ import {
   CampaignJob,
   CampaignJobDocument,
 } from '../schemas/campaign-job.schema';
+import {
+  DmMessage,
+  DmMessageDocument,
+} from '../schemas/dm-message.schema';
 
 @Injectable()
 export class DmPipelineService {
@@ -42,6 +46,8 @@ export class DmPipelineService {
     private readonly connectionModel: Model<XConnectionDocument>,
     @InjectModel(CampaignJob.name)
     private readonly campaignJobModel: Model<CampaignJobDocument>,
+    @InjectModel(DmMessage.name)
+    private readonly dmMessageModel: Model<DmMessageDocument>,
     @InjectModel(Organization.name)
     private readonly orgModel: Model<OrganizationDocument>,
     private readonly tokenCrypto: TokenCryptoService,
@@ -272,6 +278,27 @@ export class DmPipelineService {
     this.logger.log(
       `DM generated reply eventId=${event.eventId} known=${llmResult.isKnownAnswer}: ${JSON.stringify(llmResult.replyText)}`,
     );
+
+    const now = new Date();
+    const messageBase = {
+      orgId: new Types.ObjectId(event.orgId),
+      connectionId: new Types.ObjectId(event.connectionId),
+      xUserId: event.xUserId,
+      xUsername: event.xUsername,
+      conversationId: resolvedConversationId,
+      recipientId,
+      processedAt: now,
+    };
+
+    await this.dmMessageModel.insertMany([
+      { ...messageBase, direction: 'inbound', text: inboundText },
+      {
+        ...messageBase,
+        direction: 'outbound',
+        text: llmResult.replyText,
+        isKnownAnswer: llmResult.isKnownAnswer,
+      },
+    ]);
 
     const replyEvent: XDmReplyReadyEvent = {
       eventId: randomUUID(),

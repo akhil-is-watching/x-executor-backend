@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+.git
+.github
+.cursor
+*.md
+!docs/railway/nats-js/nats-server.conf
+.env
+.env.*
+!.env.example
+**/*.spec.ts
+**/test
+**/*.e2e-spec.ts
+agent-transcripts

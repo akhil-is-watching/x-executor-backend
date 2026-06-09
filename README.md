@@ -1,98 +1,175 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# x-executor
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS monorepo for automated X (Twitter) DM handling: OAuth connection management, webhook ingestion, LLM replies, campaign bulk DMs, and analytics.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Services
 
-## Description
+| App | Role | Default port | Health |
+|-----|------|--------------|--------|
+| **Hub** | REST API, auth, orgs, OAuth, campaigns, chat history | 3000 | `GET /` |
+| **Webhook** | X Account Activity ingress | 3001 | `GET /` |
+| **Processor** | DM pipeline (decrypt, LLM, NATS) | 3002 | `GET /` |
+| **Sender** | Outbound DMs via GetXAPI | 3003 | `GET /` |
+| **Scheduler** | Campaign job planning & dispatch | 3004 | `GET /` |
+| **Analytics** | Campaign stats consumer | 3005 | `GET /` |
+| **NATS** | JetStream message bus | 4222 (client), 8222 (monitor) | `GET /healthz` |
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Shared libraries live under `libs/` (`nats-js`, `redis`, `getxapi`, `llm`, `shared`).
 
-## Project setup
+## Prerequisites
+
+- Node.js 22+
+- Yarn 1.x
+- MongoDB, Redis, and NATS (local plugins, Docker Compose, or managed cloud)
+
+## Local development
 
 ```bash
-$ yarn install
+yarn install
+cp .env.example .env   # fill in secrets — see docs/env/
 ```
 
-## Compile and run the project
+Run each app in a separate terminal:
 
 ```bash
-# development
-$ yarn run start
-
-# watch mode
-$ yarn run start:dev
-
-# production mode
-$ yarn run start:prod
+yarn start:hub:dev
+yarn start:webhook:dev
+yarn start:processor:dev
+yarn start:sender:dev
+yarn start:scheduler:dev
+yarn start:analytics:dev
 ```
 
-## Run tests
+Build and run a single app in production mode:
 
 ```bash
-# unit tests
-$ yarn run test
-
-# e2e tests
-$ yarn run test:e2e
-
-# test coverage
-$ yarn run test:cov
+yarn build:hub && yarn start:hub:prod
 ```
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### Docker (recommended for GCP / Kubernetes / any container platform)
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Each service has a Dockerfile under `deploy/docker/`. Build **from the repository root**:
+
+| Service | Dockerfile | Exposed port |
+|---------|------------|--------------|
+| Hub | `deploy/docker/hub/Dockerfile` | 3000 |
+| Webhook | `deploy/docker/webhook/Dockerfile` | 3001 |
+| Processor | `deploy/docker/processor/Dockerfile` | 3002 |
+| Sender | `deploy/docker/sender/Dockerfile` | 3003 |
+| Scheduler | `deploy/docker/scheduler/Dockerfile` | 3004 |
+| Analytics | `deploy/docker/analytics/Dockerfile` | 3005 |
+| NATS | `deploy/docker/nats-js/Dockerfile` | 4222 |
+
+**Build one image** (GCP staging CI pattern):
 
 ```bash
-$ yarn install -g @nestjs/mau
-$ mau deploy
+docker build \
+  -f deploy/docker/hub/Dockerfile \
+  --build-arg VALUE_HASH="$(git rev-parse HEAD)" \
+  -t x-executor-hub:latest \
+  .
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Replace `hub` with `webhook`, `processor`, `sender`, `scheduler`, or `analytics` for other apps. Each image runs:
 
-## Resources
+```bash
+node dist/apps/<app>/main.js
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+**Environment variables** — merge `deploy/env/shared.env.example` with the matching service file from `deploy/env/`:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+- `deploy/env/hub.env.example`
+- `deploy/env/webhook.env.example`
+- `deploy/env/processor.env.example`
+- `deploy/env/sender.env.example`
+- `deploy/env/scheduler.env.example`
+- `deploy/env/analytics.env.example`
+- `deploy/env/nats.env.example`
 
-## Support
+Generate the encryption key once and reuse on Hub, Processor, and Sender:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+openssl rand -base64 32
+# → TOKEN_ENCRYPTION_KEY
+```
 
-## Stay in touch
+**Secrets that must match across services:**
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+| Variable | Services |
+|----------|----------|
+| `MONGODB_URI` | Hub, Webhook, Processor, Sender, Scheduler, Analytics |
+| `NATS_URL` | Hub, Webhook, Processor, Sender, Scheduler, Analytics |
+| `TOKEN_ENCRYPTION_KEY` | Hub, Processor, Sender |
+| `X_API_KEY_SECRET` | Hub (OAuth), Webhook (`X_CONSUMER_SECRET` or same secret) |
 
-## License
+Set `PORT` (or `PROCESSOR_PORT` / `SENDER_PORT`) in the container environment. Platforms like Railway inject `PORT` automatically.
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+**Processor note:** XChat PIN unlock spawns `scripts/xchat-recover-secret.mjs` at runtime; the processor image includes the full repo `scripts/` directory.
+
+### Docker Compose (full local stack)
+
+Runs MongoDB, Redis, NATS, and all six Nest apps:
+
+```bash
+cp deploy/docker/.env.example deploy/docker/.env
+# Set TOKEN_ENCRYPTION_KEY and X API keys in deploy/docker/.env
+
+docker compose -f deploy/docker/docker-compose.yml up --build
+```
+
+| URL | Service |
+|-----|---------|
+| http://localhost:3000 | Hub API |
+| http://localhost:3001 | Webhook |
+| http://localhost:3002 | Processor |
+| http://localhost:3003 | Sender |
+| http://localhost:3004 | Scheduler |
+| http://localhost:3005 | Analytics |
+| nats://localhost:4222 | NATS client |
+| http://localhost:8222 | NATS monitor |
+
+Compose wires `MONGODB_URI`, `REDIS_URL`, and `NATS_URL` to the bundled infrastructure containers. Override public URLs in `deploy/docker/.env` if testing OAuth against localhost.
+
+### Railway
+
+Railway uses per-service `railway.toml` files and Yarn build commands instead of Dockerfiles. See **[docs/railway.md](docs/railway.md)** for step-by-step setup (plugins, reference variables, health checks, webhook troubleshooting).
+
+Config paths (repo root):
+
+- `docs/railway/hub/railway.toml`
+- `docs/railway/webhook/railway.toml`
+- `docs/railway/processor/railway.toml`
+- `docs/railway/sender/railway.toml`
+- `docs/railway/scheduler/railway.toml`
+- `docs/railway/analytics/railway.toml`
+- `docs/railway/nats-js/railway.toml`
+
+Legacy env templates also remain in `docs/env/` (same variables as `deploy/env/`).
+
+### Frontend
+
+Campaign UI and admin dashboard live in the separate **x-executor-frontend** repo. Integration guide: **[docs/CREATE_AND_INTEGRATE_FRONTEND.md](docs/CREATE_AND_INTEGRATE_FRONTEND.md)**.
+
+## Tests
+
+```bash
+yarn test              # unit tests
+yarn test:hub:e2e      # Hub e2e (in-memory Mongo)
+yarn test:webhook:e2e  # Webhook e2e
+```
+
+## Architecture (high level)
+
+```
+X webhook → Webhook → NATS → Processor → NATS → Sender → GetXAPI
+                              ↓
+                         MongoDB (dm_messages, orgs, connections)
+
+Hub POST campaign → NATS → Scheduler → NATS → Sender
+                         ↓
+                    Analytics → MongoDB (campaign stats)
+```
+
+NATS subjects and consumer durables are defined in `libs/nats-js/src/nats.constants.ts`.

@@ -123,7 +123,7 @@ export class XChatDecryptService {
 
     // L2 — Redis conversation key
     const l2RedisKey = `${XCHAT_CONVKEY_PREFIX}${xUserId}:${keyVersion}`;
-    const l2Hit = await this.redis.getJson<string>(l2RedisKey);
+    const l2Hit = await this.readCachedString(l2RedisKey);
     if (l2Hit) {
       this.logger.debug(`XChat convkey L2 hit xUserId=${xUserId} ver=${keyVersion}`);
       this.convKeyL1.set(l1Key, l2Hit);
@@ -163,7 +163,7 @@ export class XChatDecryptService {
     // Populate L1 + L2
     this.convKeyL1.set(l1Key, convKeyHex);
     await this.redis
-      .setex(l2RedisKey, L2_CONVKEY_TTL_SEC, convKeyHex)
+      .setJson(l2RedisKey, convKeyHex, L2_CONVKEY_TTL_SEC)
       .catch((err: unknown) => {
         this.logger.warn(`Failed to cache convkey in Redis: ${String(err)}`);
       });
@@ -187,7 +187,7 @@ export class XChatDecryptService {
     const l3Key = `${XCHAT_SECRET_PREFIX}${xUserId}`;
 
     // L3 — Redis
-    const l3Hit = await this.redis.getJson<string>(l3Key);
+    const l3Hit = await this.readCachedString(l3Key);
     if (l3Hit) {
       this.logger.debug(`XChat secret L3 hit xUserId=${xUserId}`);
       return l3Hit;
@@ -262,7 +262,7 @@ export class XChatDecryptService {
 
     // Populate L3
     await this.redis
-      .setex(l3Key, L3_SECRET_TTL_SEC, recoveredSecretHex)
+      .setJson(l3Key, recoveredSecretHex, L3_SECRET_TTL_SEC)
       .catch((err: unknown) => {
         this.logger.warn(`Failed to cache account secret in Redis: ${String(err)}`);
       });
@@ -311,5 +311,30 @@ export class XChatDecryptService {
   async invalidateSecret(xUserId: string): Promise<void> {
     await this.redis.del(`${XCHAT_SECRET_PREFIX}${xUserId}`);
     // L1 conv keys remain valid — they were derived from the correct secret
+  }
+
+  /**
+   * Reads a cached string from Redis. Supports JSON-encoded values (setJson)
+   * and legacy raw hex strings written via setex.
+   */
+  private async readCachedString(key: string): Promise<string | null> {
+    const raw = await this.redis.get(key);
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (typeof parsed === 'string' && parsed.length > 0) {
+        return parsed;
+      }
+      return null;
+    } catch {
+      if (/^[0-9a-fA-F]+$/.test(raw)) {
+        return raw;
+      }
+      await this.redis.del(key).catch(() => undefined);
+      return null;
+    }
   }
 }

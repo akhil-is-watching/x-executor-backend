@@ -4,8 +4,9 @@ import { RedisService } from '@app/redis';
 import { XChatDecryptService } from './xchat-decrypt.service';
 
 const mockRedis = {
+  get: jest.fn(),
   getJson: jest.fn(),
-  setex: jest.fn(),
+  setJson: jest.fn(),
   del: jest.fn(),
 };
 
@@ -34,8 +35,9 @@ describe('XChatDecryptService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockRedis.get.mockResolvedValue(null);
     mockRedis.getJson.mockResolvedValue(null);
-    mockRedis.setex.mockResolvedValue(undefined);
+    mockRedis.setJson.mockResolvedValue(undefined);
     mockRedis.del.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -62,20 +64,18 @@ describe('XChatDecryptService', () => {
 
     it('returns null when conversation key cannot be resolved', async () => {
       mockBuildConvKeyMap.mockReturnValue({});
-      // No L3 secret in Redis → would need full unlock; mock Redis to throw
-      mockRedis.getJson.mockRejectedValueOnce(new Error('redis down'));
+      mockRedis.get.mockRejectedValueOnce(new Error('redis down'));
 
       const result = await service.decryptXChatEvent(baseParams).catch(() => null);
       expect(result).toBeNull();
     });
 
     it('uses L1 cache on second call — skips Redis entirely', async () => {
-      // Seed L2 Redis hit for the first call
       const convKeyHex = 'aabbccdd';
-      mockRedis.getJson
-        .mockResolvedValueOnce(null)    // L2 miss first check
-        .mockResolvedValueOnce('SECRET_HEX') // L3 hit
-        .mockResolvedValue(convKeyHex); // any subsequent
+      mockRedis.get
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(JSON.stringify('SECRET_HEX'))
+        .mockResolvedValue(null);
 
       mockBuildConvKeyMap.mockReturnValue({
         'ver-1': convKeyHex,
@@ -84,28 +84,24 @@ describe('XChatDecryptService', () => {
         parsed_entry: { kind: 'text', text: 'Hello World' },
       });
 
-      // First call — populates L1
       await service.decryptXChatEvent(baseParams).catch(() => null);
 
-      // Reset redis mocks to verify L1 is used
       jest.clearAllMocks();
-      mockRedis.getJson.mockResolvedValue(null);
+      mockRedis.get.mockResolvedValue(null);
       mockDecryptEvent.mockReturnValue({
         parsed_entry: { kind: 'text', text: 'Hello World' },
       });
 
-      // Second call — should hit L1 (no Redis calls for the conv key)
       const result = await service.decryptXChatEvent(baseParams);
       expect(result).toBe('Hello World');
-      // L2 key lookup should not happen (L1 hit)
-      expect(mockRedis.getJson).not.toHaveBeenCalledWith(
+      expect(mockRedis.get).not.toHaveBeenCalledWith(
         expect.stringContaining('xchat:convkey:uid-1:ver-1'),
       );
     });
 
     it('reads from L2 Redis on cache hit and populates L1', async () => {
       const convKeyHex = 'deadbeef';
-      mockRedis.getJson.mockResolvedValueOnce(convKeyHex); // L2 hit
+      mockRedis.get.mockResolvedValueOnce(JSON.stringify(convKeyHex));
 
       mockDecryptEvent.mockReturnValue({
         parsed_entry: { kind: 'text', text: 'Cached message' },
@@ -116,8 +112,18 @@ describe('XChatDecryptService', () => {
       expect(mockBuildConvKeyMap).not.toHaveBeenCalled();
     });
 
+    it('reads legacy raw hex values stored via setex', async () => {
+      mockRedis.get.mockResolvedValueOnce('cafebabe');
+      mockDecryptEvent.mockReturnValue({
+        parsed_entry: { kind: 'text', text: 'Legacy cache hit' },
+      });
+
+      const result = await service.decryptXChatEvent(baseParams);
+      expect(result).toBe('Legacy cache hit');
+    });
+
     it('returns null and does not throw when decrypt_xchat_message_event throws', async () => {
-      mockRedis.getJson.mockResolvedValueOnce('convkeyhex'); // L2 hit
+      mockRedis.get.mockResolvedValueOnce(JSON.stringify('convkeyhex'));
       mockDecryptEvent.mockImplementation(() => {
         throw new Error('bad ciphertext');
       });
@@ -127,7 +133,7 @@ describe('XChatDecryptService', () => {
     });
 
     it('returns null when parsed_entry text is empty', async () => {
-      mockRedis.getJson.mockResolvedValueOnce('convkeyhex');
+      mockRedis.get.mockResolvedValueOnce(JSON.stringify('convkeyhex'));
       mockDecryptEvent.mockReturnValue({
         parsed_entry: { kind: 'text', text: '   ' },
       });

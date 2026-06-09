@@ -15,5 +15,5 @@ watchPatterns = [
 
 [deploy]
 startCommand = "yarn start:hub:prod"
-healthcheckPath = "/xbot/v1/api/health"
+healthcheckPath = "/xbot/v1/api/hub/health"
 restartPolicyType = "ON_FAILURE"

@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
 import { randomBytes } from 'crypto';
-import { API_GLOBAL_PREFIX } from '@app/shared';
+import { API_GLOBAL_PREFIX, HUB_HEALTH_PATH, apiRoutePath } from '@app/shared';
 import { XApiService } from '../src/oauth/x-api.service';
 import { RedisService } from '@app/redis';
 import { OAuthStateStore } from '../src/oauth/oauth-state.store';
@@ -94,9 +94,9 @@ describe('Hub (e2e)', () => {
     }
   });
 
-  it('GET /xbot/v1/api/health', () => {
+  it(`GET ${apiRoutePath(HUB_HEALTH_PATH)}`, () => {
     return request(app.getHttpServer())
-      .get('/xbot/v1/api/health')
+      .get(apiRoutePath(HUB_HEALTH_PATH))
       .expect(200)
       .expect({ status: 'ok' });
   });

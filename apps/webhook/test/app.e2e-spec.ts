@@ -7,7 +7,11 @@ import { createHmac } from 'crypto';
 import { Types } from 'mongoose';
 import { NatsJsService } from '@app/nats-js';
 import type { XWebhookReceivedEvent } from '@app/shared';
-import { API_GLOBAL_PREFIX } from '@app/shared';
+import {
+  API_GLOBAL_PREFIX,
+  WEBHOOK_HEALTH_PATH,
+  apiRoutePath,
+} from '@app/shared';
 import { XConnection } from '../src/schemas/x-connection.schema';
 import { createCrcResponse } from '../src/x-webhook.crypto';
 import { SHARED_WEBHOOK_ID } from '../src/incoming/incoming.service';
@@ -70,9 +74,9 @@ describe('Webhook (e2e)', () => {
     jest.clearAllMocks();
   });
 
-  it('GET /xbot/v1/api/health', () => {
+  it(`GET ${apiRoutePath(WEBHOOK_HEALTH_PATH)}`, () => {
     return request(app.getHttpServer())
-      .get('/xbot/v1/api/health')
+      .get(apiRoutePath(WEBHOOK_HEALTH_PATH))
       .expect(200)
       .expect({ status: 'ok' });
   });

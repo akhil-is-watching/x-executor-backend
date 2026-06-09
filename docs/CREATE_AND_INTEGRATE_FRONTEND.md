@@ -97,7 +97,7 @@ yarn install
 yarn start:hub:dev
 ```
 
-Hub listens on `PORT` (default **3000**). Health: `GET /xbot/v1/api/health` → `{ "status": "ok" }`. Business routes use **`/xbot/v1/api`**.
+Hub listens on `PORT` (default **3000**). Health: `GET /xbot/v1/api/hub/health` → `{ "status": "ok" }`. Business routes use **`/xbot/v1/api`**.
 
 ```bash
 yarn test:hub:e2e

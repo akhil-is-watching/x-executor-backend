@@ -56,7 +56,16 @@ For local development, the root `.env.example` still lists all variables in one 
 
 ## Health checks
 
-Nest apps expose `GET /xbot/v1/api/health` → `{ "status": "ok" }` (`healthcheckPath = "/xbot/v1/api/health"`).
+Each Nest app exposes a service-specific health route → `{ "status": "ok" }` (see `healthcheckPath` in each `docs/railway/*/railway.toml`):
+
+| Service | Path |
+|---------|------|
+| Hub | `GET /xbot/v1/api/hub/health` |
+| Webhook | `GET /xbot/v1/api/webhook/health` |
+| Processor | `GET /xbot/v1/api/processor/health` |
+| Sender | `GET /xbot/v1/api/sender/health` |
+| Scheduler | `GET /xbot/v1/api/scheduler/health` |
+| Analytics | `GET /xbot/v1/api/analytics/health` |
 
 NATS: set service variable `PORT=8222` so Railway hits `GET /healthz` on the HTTP monitor (see `docs/env/nats.env.example`). Client apps still use `NATS_URL` on port `4222`.
 
@@ -76,7 +85,7 @@ The Webhook app routes events by `for_user_id` in the payload (fans out if the s
 
 **Webhook must use the same `MONGODB_URI` as Hub** so `x_connections` rows exist for routing.
 
-**No POSTs in Webhook logs?** Your URL is reachable if `GET /xbot/v1/api/health` and CRC work; silence means **X is not sending events** (not a Nest bug). Checklist:
+**No POSTs in Webhook logs?** Your URL is reachable if `GET /xbot/v1/api/webhook/health` and CRC work; silence means **X is not sending events** (not a Nest bug). Checklist:
 
 1. In Developer Portal → **Webhooks**, confirm config `2062592785111478272` (or latest Hub log id) shows **Valid** — invalid webhooks receive no events ([docs](https://docs.x.com/x-api/webhooks/introduction)).
 2. Re-OAuth after deploy (Hub logs `valid=true` and may trigger `PUT /2/webhooks/:id` CRC if invalid).
@@ -115,7 +124,7 @@ Webhook publishes to JetStream subject `x.webhook.received` after a successful P
    ```bash
    NATS_URL=nats://${{Nats.RAILWAY_PRIVATE_DOMAIN}}:4222
    ```
-2. **Processor service is running** — it has no public URL; confirm deploy is healthy (`GET /xbot/v1/api/health` on its internal port).
+2. **Processor service is running** — it has no public URL; confirm deploy is healthy (`GET /xbot/v1/api/processor/health` on its internal port).
 3. **Webhook shows NATS publish** — if you see `X webhook processed → 1 NATS event(s)` but no `Published x.webhook.received`, redeploy Webhook with latest code or check for publish errors in logs.
 4. **Favorites / tweets are not DMs** — Processor **ignores** non-`direct_message_events` after logging `Skipping non-DM`. A favorite test proves Webhook → NATS → Processor; it will **not** run the DM/LLM pipeline.
 5. **DM pipeline prerequisites** (after `Processing DM`): same `MONGODB_URI` as Hub, org **system prompt** set, connection **auth token** set in admin UI, `TOKEN_ENCRYPTION_KEY` matches Hub, GetXAPI/OpenAI/Redis env on Processor.

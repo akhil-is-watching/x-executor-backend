@@ -4,6 +4,9 @@ export class CreateCampaignResponseDto {
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   id!: string;
 
+  @ApiProperty({ example: 'Q1 outreach' })
+  name!: string;
+
   @ApiProperty({
     enum: ['pending', 'running', 'completed', 'failed'],
     example: 'pending',
@@ -32,6 +35,9 @@ export class CampaignStatusResponseDto {
 
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   orgId!: string;
+
+  @ApiProperty({ example: 'Q1 outreach' })
+  name!: string;
 
   @ApiProperty({
     enum: ['pending', 'running', 'completed', 'failed'],
@@ -80,6 +86,49 @@ export class CampaignStatusResponseDto {
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: Date;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  updatedAt!: Date;
+}
+
+export class CampaignSummaryDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  id!: string;
+
+  @ApiProperty({ example: 'Q1 outreach' })
+  name!: string;
+
+  @ApiProperty({
+    enum: ['pending', 'running', 'completed', 'failed'],
+    example: 'running',
+  })
+  status!: string;
+
+  @ApiProperty({ example: 100 })
+  totalTargets!: number;
+
+  @ApiProperty({ example: 42 })
+  messagesSent!: number;
+
+  @ApiProperty({ example: 2 })
+  failedCount!: number;
+
+  @ApiProperty({ example: 44 })
+  progressPercent!: number;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  createdAt!: Date;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  completedAt?: Date;
+}
+
+export class UpdateCampaignResponseDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  id!: string;
+
+  @ApiProperty({ example: 'Q1 outreach (revised)' })
+  name!: string;
 
   @ApiProperty({ type: String, format: 'date-time' })
   updatedAt!: Date;

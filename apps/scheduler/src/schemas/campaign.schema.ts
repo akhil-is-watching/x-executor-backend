@@ -10,6 +10,9 @@ export class Campaign {
   @Prop({ type: Types.ObjectId, ref: 'Organization', required: true })
   orgId!: Types.ObjectId;
 
+  @Prop({ trim: true, maxlength: 100 })
+  name?: string;
+
   @Prop({
     required: true,
     enum: ['pending', 'running', 'completed', 'failed'],

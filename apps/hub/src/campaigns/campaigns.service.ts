@@ -10,6 +10,8 @@ import type { CampaignCreatedEvent } from '@app/shared';
 import { Campaign, CampaignDocument } from '../schemas/campaign.schema';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 
+const UNTITLED_CAMPAIGN_NAME = 'Untitled campaign';
+
 @Injectable()
 export class CampaignsService {
   constructor(
@@ -33,6 +35,7 @@ export class CampaignsService {
 
     const campaign = await this.campaignModel.create({
       orgId: new Types.ObjectId(orgId),
+      name: dto.name.trim(),
       status: 'pending',
       messageText: dto.messageText.trim(),
       targetUsernames,
@@ -57,12 +60,42 @@ export class CampaignsService {
 
     return {
       id: campaign._id.toString(),
+      name: campaign.name,
       status: campaign.status,
       totalTargets: campaign.totalTargets,
       dmsPerHour: campaign.dmsPerHour,
       messageText: campaign.messageText,
       targetUsernames: campaign.targetUsernames,
       createdAt: campaign.createdAt,
+    };
+  }
+
+  async listForOrg(orgId: string) {
+    const campaigns = await this.campaignModel
+      .find({ orgId: new Types.ObjectId(orgId) })
+      .sort({ createdAt: -1 });
+
+    return campaigns.map((campaign) => this.toSummary(campaign));
+  }
+
+  async updateName(orgId: string, campaignId: string, name: string) {
+    const campaign = await this.campaignModel.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(campaignId),
+        orgId: new Types.ObjectId(orgId),
+      },
+      { $set: { name: name.trim() } },
+      { returnDocument: 'after' },
+    );
+
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    return {
+      id: campaign._id.toString(),
+      name: campaign.name,
+      updatedAt: campaign.updatedAt,
     };
   }
 
@@ -90,6 +123,7 @@ export class CampaignsService {
     return {
       id: campaign._id.toString(),
       orgId: campaign.orgId.toString(),
+      name: this.resolveName(campaign),
       status: campaign.status,
       messageText: campaign.messageText,
       targetUsernames: campaign.targetUsernames,
@@ -107,5 +141,33 @@ export class CampaignsService {
       createdAt: campaign.createdAt,
       updatedAt: campaign.updatedAt,
     };
+  }
+
+  private toSummary(campaign: CampaignDocument) {
+    const progressPercent =
+      campaign.totalTargets > 0
+        ? Math.round(
+            ((campaign.messagesSent + campaign.failedCount) /
+              campaign.totalTargets) *
+              100,
+          )
+        : 0;
+
+    return {
+      id: campaign._id.toString(),
+      name: this.resolveName(campaign),
+      status: campaign.status,
+      totalTargets: campaign.totalTargets,
+      messagesSent: campaign.messagesSent,
+      failedCount: campaign.failedCount,
+      progressPercent,
+      createdAt: campaign.createdAt,
+      completedAt: campaign.completedAt,
+    };
+  }
+
+  private resolveName(campaign: CampaignDocument): string {
+    const trimmed = campaign.name?.trim();
+    return trimmed ? trimmed : UNTITLED_CAMPAIGN_NAME;
   }
 }

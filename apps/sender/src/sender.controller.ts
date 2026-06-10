@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
+import { SENDER_HEALTH_PATH } from '@app/shared';
 
-@Controller('health')
+@Controller(SENDER_HEALTH_PATH)
 export class SenderController {
   @Get()
   health() {

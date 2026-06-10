@@ -30,11 +30,6 @@ export class WebhookController {
     private readonly config: ConfigService,
   ) {}
 
-  @Get('health')
-  health() {
-    return { status: 'ok' };
-  }
-
   @Get(['webhooks/incoming', 'webhooks/incoming/'])
   handleCrc(@Query('crc_token') crcToken: string | undefined) {
     if (!crcToken) {

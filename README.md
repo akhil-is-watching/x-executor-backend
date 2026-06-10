@@ -6,12 +6,12 @@ NestJS monorepo for automated X (Twitter) DM handling: OAuth connection manageme
 
 | App | Role | Default port | Health |
 |-----|------|--------------|--------|
-| **Hub** | REST API, auth, orgs, OAuth, campaigns, chat history | 3000 | `GET /xbot/v1/api/health` |
-| **Webhook** | X Account Activity ingress | 3001 | `GET /xbot/v1/api/health` |
-| **Processor** | DM pipeline (decrypt, LLM, NATS) | 3002 | `GET /xbot/v1/api/health` |
-| **Sender** | Outbound DMs via GetXAPI | 3003 | `GET /xbot/v1/api/health` |
-| **Scheduler** | Campaign job planning & dispatch | 3004 | `GET /xbot/v1/api/health` |
-| **Analytics** | Campaign stats consumer | 3005 | `GET /xbot/v1/api/health` |
+| **Hub** | REST API, auth, orgs, OAuth, campaigns, chat history | 3000 | `GET /xbot/v1/api/hub/health` |
+| **Webhook** | X Account Activity ingress | 3001 | `GET /xbot/v1/api/webhook/health` |
+| **Processor** | DM pipeline (decrypt, LLM, NATS) | 3002 | `GET /xbot/v1/api/processor/health` |
+| **Sender** | Outbound DMs via GetXAPI | 3003 | `GET /xbot/v1/api/sender/health` |
+| **Scheduler** | Campaign job planning & dispatch | 3004 | `GET /xbot/v1/api/scheduler/health` |
+| **Analytics** | Campaign stats consumer | 3005 | `GET /xbot/v1/api/analytics/health` |
 | **NATS** | JetStream message bus | 4222 (client), 8222 (monitor) | `GET /healthz` |
 
 Shared libraries live under `libs/` (`nats-js`, `redis`, `getxapi`, `llm`, `shared`).

@@ -162,4 +162,25 @@ describe('Hub (e2e)', () => {
     expect(connections.body[0].webhookUrl).toBe(callback.body.webhookUrl);
     expect(connections.body[0].subscribed).toBe(false);
   });
+
+  it('rejects creating a second organization for the same user', async () => {
+    const register = await request(app.getHttpServer())
+      .post('/xbot/v1/api/auth/register')
+      .send({ email: 'solo@example.com', password: 'password123' })
+      .expect(201);
+
+    const token = register.body.accessToken;
+
+    await request(app.getHttpServer())
+      .post('/xbot/v1/api/orgs')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'First Org' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/xbot/v1/api/orgs')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Second Org' })
+      .expect(409);
+  });
 });

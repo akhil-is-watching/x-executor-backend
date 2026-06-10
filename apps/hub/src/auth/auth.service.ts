@@ -35,9 +35,6 @@ export class AuthService {
       orgId: 'pending',
     });
 
-    user.orgId = user._id.toString();
-    await user.save();
-
     return this.buildAuthResponse(user);
   }
 

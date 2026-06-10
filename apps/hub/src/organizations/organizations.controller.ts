@@ -35,8 +35,12 @@ export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create an organization' })
+  @ApiOperation({ summary: 'Create the user organization (one per user)' })
   @ApiResponse({ status: 201, type: OrganizationDto })
+  @ApiResponse({
+    status: 409,
+    description: 'User already belongs to an organization',
+  })
   create(
     @CurrentUser() user: JwtUserPayload,
     @Body() dto: CreateOrganizationDto,
@@ -45,7 +49,7 @@ export class OrganizationsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List organizations for the current user' })
+  @ApiOperation({ summary: 'Get the current user organization, if any' })
   @ApiResponse({ status: 200, type: [OrganizationWithRoleDto] })
   list(@CurrentUser() user: JwtUserPayload) {
     return this.organizationsService.listForUser(user.sub);

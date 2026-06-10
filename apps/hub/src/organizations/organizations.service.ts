@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
@@ -26,6 +30,8 @@ export class OrganizationsService {
   ) {}
 
   async create(userId: string, dto: CreateOrganizationDto) {
+    await this.assertUserHasNoOrganization(userId);
+
     const org = await this.orgModel.create({
       name: dto.name,
       slug: dto.slug,
@@ -38,7 +44,21 @@ export class OrganizationsService {
       role: OrgRole.Owner,
     });
 
+    await this.userModel.updateOne(
+      { _id: new Types.ObjectId(userId) },
+      { $set: { orgId: org._id.toString() } },
+    );
+
     return this.toOrgResponse(org);
+  }
+
+  private async assertUserHasNoOrganization(userId: string): Promise<void> {
+    const existing = await this.membershipModel.exists({
+      userId: new Types.ObjectId(userId),
+    });
+    if (existing) {
+      throw new ConflictException('User already belongs to an organization');
+    }
   }
 
   async listForUser(userId: string) {

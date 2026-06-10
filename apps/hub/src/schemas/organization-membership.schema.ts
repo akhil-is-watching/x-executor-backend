@@ -25,3 +25,4 @@ export const OrganizationMembershipSchema = SchemaFactory.createForClass(
   OrganizationMembership,
 );
 OrganizationMembershipSchema.index({ orgId: 1, userId: 1 }, { unique: true });
+OrganizationMembershipSchema.index({ userId: 1 }, { unique: true });

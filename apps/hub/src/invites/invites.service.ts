@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { API_GLOBAL_PREFIX } from '@app/shared';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CreateInviteDto } from './dto/create-invite.dto';
@@ -129,21 +130,10 @@ export class InvitesService {
   }
 
   private buildInviteUrl(token: string): string {
-    const frontendBase = this.resolveFrontendPublicBaseUrl();
-    return `${frontendBase}/connect/${encodeURIComponent(token)}`;
-  }
-
-  private resolveFrontendPublicBaseUrl(): string {
-    const oauthSuccess = this.config.get<string>('OAUTH_SUCCESS_REDIRECT_URL');
-    if (oauthSuccess) {
-      return new URL(oauthSuccess).origin;
-    }
-
-    const frontend = this.config.get<string>('FRONTEND_PUBLIC_BASE_URL');
-    if (frontend) {
-      return frontend.replace(/\/$/, '');
-    }
-
-    return 'http://localhost:5173';
+    const base = this.config.getOrThrow<string>('HUB_PUBLIC_BASE_URL').replace(
+      /\/$/,
+      '',
+    );
+    return `${base}/${API_GLOBAL_PREFIX}/oauth/x/start?invite=${encodeURIComponent(token)}`;
   }
 }

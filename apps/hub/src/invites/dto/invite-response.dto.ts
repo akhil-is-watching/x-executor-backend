@@ -8,7 +8,8 @@ export class InviteDto {
   inviteToken!: string;
 
   @ApiProperty({
-    example: 'https://app.example.com/connect/abc123',
+    example:
+      'https://hub.example.com/xbot/v1/api/oauth/x/start?invite=abc123',
   })
   inviteUrl!: string;
 

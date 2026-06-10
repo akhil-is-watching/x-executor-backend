@@ -4,7 +4,7 @@ NestJS monorepo for automated X (Twitter) DM handling: OAuth connection manageme
 
 ## Services
 
-| App | Role | Default port | Health |
+| App | Role | Local `PORT` | Health |
 |-----|------|--------------|--------|
 | **Hub** | REST API, auth, orgs, OAuth, campaigns, chat history | 3000 | `GET /xbot/v1/api/hub/health` |
 | **Webhook** | X Account Activity ingress | 3001 | `GET /xbot/v1/api/webhook/health` |
@@ -104,7 +104,7 @@ openssl rand -base64 32
 | `TOKEN_ENCRYPTION_KEY` | Hub, Processor, Sender |
 | `X_API_KEY_SECRET` | Hub (OAuth), Webhook (`X_CONSUMER_SECRET` or same secret) |
 
-Set `PORT` (or `PROCESSOR_PORT` / `SENDER_PORT`) in the container environment. Platforms like Railway inject `PORT` automatically.
+Set `PORT` in the container environment. Platforms like Railway inject `PORT` automatically.
 
 **Processor note:** XChat PIN unlock spawns `scripts/xchat-recover-secret.mjs` at runtime; the processor image includes the full repo `scripts/` directory.
 

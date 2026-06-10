@@ -1,4 +1,5 @@
 export * from './api.constants';
+export * from './env.util';
 export * from './shared.module';
 export * from './shared.service';
 export * from './events/x-webhook-received.event';

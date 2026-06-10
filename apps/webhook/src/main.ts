@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
-import { API_GLOBAL_PREFIX } from '@app/shared';
+import { API_GLOBAL_PREFIX, resolveListenPort } from '@app/shared';
 import { WebhookModule } from './webhook.module';
 
 const httpLogger = new Logger('HTTP');
@@ -18,7 +18,7 @@ async function bootstrap() {
     next();
   });
   app.setGlobalPrefix(API_GLOBAL_PREFIX);
-  const port = process.env.PORT ?? process.env.port ?? 3001;
+  const port = resolveListenPort();
   await app.listen(port);
   httpLogger.log(`Webhook listening on port ${port}`);
 }

@@ -1,7 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { API_GLOBAL_PREFIX } from '@app/shared';
+import { API_GLOBAL_PREFIX, resolveListenPort } from '@app/shared';
 import { HubModule } from './hub.module';
 
 async function bootstrap() {
@@ -31,7 +31,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.PORT ?? process.env.port ?? 3000;
-  await app.listen(port);
+  await app.listen(resolveListenPort());
 }
 bootstrap();

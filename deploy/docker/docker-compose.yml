@@ -73,7 +73,6 @@ services:
       - .env
     environment:
       PORT: "3002"
-      PROCESSOR_PORT: "3002"
       MONGODB_URI: mongodb://mongodb:27017/x-executor
       REDIS_URL: redis://redis:6379
       NATS_URL: nats://nats:4222
@@ -92,7 +91,6 @@ services:
       - .env
     environment:
       PORT: "3003"
-      SENDER_PORT: "3003"
       MONGODB_URI: mongodb://mongodb:27017/x-executor
       REDIS_URL: redis://redis:6379
       NATS_URL: nats://nats:4222

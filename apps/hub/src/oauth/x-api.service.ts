@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TwitterApi } from 'twitter-api-v2';
@@ -21,6 +22,8 @@ export interface XOAuth1AccessToken {
 
 @Injectable()
 export class XApiService {
+  private readonly logger = new Logger(XApiService.name);
+
   constructor(private readonly config: ConfigService) {}
 
   private getAppClient(): TwitterApi {
@@ -93,6 +96,36 @@ export class XApiService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new InternalServerErrorException(`X users/me (OAuth 1.0a) failed: ${message}`);
+    }
+  }
+
+  /** Revokes the user's OAuth 1.0a access token on X (POST oauth/invalidate_token). */
+  async invalidateOAuth1AccessToken(
+    accessToken: string,
+    accessTokenSecret: string,
+  ): Promise<void> {
+    const appKey = this.config.getOrThrow<string>('X_API_KEY');
+    const appSecret = this.config.getOrThrow<string>('X_API_KEY_SECRET');
+    const userClient = new TwitterApi({
+      appKey,
+      appSecret,
+      accessToken,
+      accessSecret: accessTokenSecret,
+    });
+
+    try {
+      await userClient.post('https://api.x.com/1.1/oauth/invalidate_token');
+      this.logger.log('X OAuth 1.0a access token invalidated');
+    } catch (err: unknown) {
+      const status = (err as { code?: number })?.code;
+      const apiCode = (
+        err as { data?: { errors?: Array<{ code?: number }> } }
+      )?.data?.errors?.[0]?.code;
+      if (status === 401 || apiCode === 89) {
+        return;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`X OAuth invalidate_token failed: ${message}`);
     }
   }
 }

@@ -80,7 +80,10 @@ export class ConnectionsController {
 
   @Delete(':connectionId')
   @UseGuards(OrgAdminGuard)
-  @ApiOperation({ summary: 'Revoke an X connection (admin only)' })
+  @ApiOperation({
+    summary:
+      'Revoke an X connection: unsubscribe webhooks, invalidate X OAuth token, and clear stored secrets (admin only)',
+  })
   @ApiParam({ name: 'orgId', description: 'Organization ID' })
   @ApiParam({ name: 'connectionId', description: 'Connection ID' })
   @ApiResponse({ status: 200, type: RevokeConnectionResponseDto })

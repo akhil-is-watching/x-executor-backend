@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
+import { PROCESSOR_HEALTH_PATH } from '@app/shared';
 
-@Controller('processor/health')
+@Controller(PROCESSOR_HEALTH_PATH)
 export class ProcessorController {
   @Get()
   health() {

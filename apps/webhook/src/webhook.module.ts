@@ -10,6 +10,7 @@ import {
   XConnectionSchema,
 } from './schemas/x-connection.schema';
 import { WebhookController } from './webhook.controller';
+import { WebhookHealthController } from './webhook-health.controller';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { WebhookController } from './webhook.controller';
       { name: XConnection.name, schema: XConnectionSchema },
     ]),
   ],
-  controllers: [WebhookController],
+  controllers: [WebhookController, WebhookHealthController],
   providers: [IncomingService, ConsumerSecretConfig],
 })
 export class WebhookModule {}

@@ -38,6 +38,7 @@
     "start:analytics:prod": "node dist/apps/analytics/main",
     "test:hub:e2e": "jest --config ./apps/hub/test/jest-e2e.json",
     "test:webhook:e2e": "jest --config ./apps/webhook/test/jest-e2e.json",
+    "test:services:health:e2e": "jest --config ./apps/processor/test/jest-e2e.json && jest --config ./apps/sender/test/jest-e2e.json && jest --config ./apps/scheduler/test/jest-e2e.json && jest --config ./apps/analytics/test/jest-e2e.json",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

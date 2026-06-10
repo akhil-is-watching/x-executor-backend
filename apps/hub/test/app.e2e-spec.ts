@@ -4,6 +4,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
 import { randomBytes } from 'crypto';
 import { API_GLOBAL_PREFIX, HUB_HEALTH_PATH, apiRoutePath } from '@app/shared';
+import { NatsJsService } from '@app/nats-js';
 import { XApiService } from '../src/oauth/x-api.service';
 import { RedisService } from '@app/redis';
 import { OAuthStateStore } from '../src/oauth/oauth-state.store';
@@ -32,6 +33,12 @@ describe('Hub (e2e)', () => {
     onModuleDestroy: jest.fn(),
   };
 
+  const mockNatsJs = {
+    publishJson: jest.fn(),
+    onModuleInit: jest.fn(),
+    onModuleDestroy: jest.fn(),
+  };
+
   const mockXApi = {
     getRequestToken: jest.fn(async () => ({
       oauthToken: 'oauth-token-test',
@@ -55,6 +62,7 @@ describe('Hub (e2e)', () => {
 
     process.env.MONGODB_URI = mongod.getUri();
     process.env.REDIS_URL = 'redis://localhost:6379';
+    process.env.NATS_URL = 'nats://localhost:4222';
     process.env.JWT_SECRET = 'test-jwt-secret';
     process.env.JWT_EXPIRES_IN = '1h';
     process.env.TOKEN_ENCRYPTION_KEY = encryptionKey;
@@ -73,6 +81,8 @@ describe('Hub (e2e)', () => {
     })
       .overrideProvider(RedisService)
       .useValue(mockRedis)
+      .overrideProvider(NatsJsService)
+      .useValue(mockNatsJs)
       .overrideProvider(XApiService)
       .useValue(mockXApi)
       .compile();

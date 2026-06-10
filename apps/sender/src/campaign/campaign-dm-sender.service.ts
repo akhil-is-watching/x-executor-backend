@@ -7,7 +7,9 @@ import type {
   CampaignAnalyticsEvent,
   CampaignDmReadyEvent,
 } from '@app/shared';
+import { buildConversationId } from '@app/shared';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
+import { DmMessage } from '../schemas/dm-message.schema';
 import {
   XConnection,
   XConnectionDocument,
@@ -20,6 +22,8 @@ export class CampaignDmSenderService {
   constructor(
     @InjectModel(XConnection.name)
     private readonly connectionModel: Model<XConnectionDocument>,
+    @InjectModel(DmMessage.name)
+    private readonly dmMessageModel: Model<DmMessage>,
     private readonly tokenCrypto: TokenCryptoService,
     private readonly getxapi: GetxapiService,
     private readonly natsJs: NatsJsService,
@@ -58,6 +62,12 @@ export class CampaignDmSenderService {
           `to=@${event.recipientUsername}`,
       );
 
+      await this.recordOutboundMessage(
+        event,
+        connection,
+        result.data?.recipientId,
+      );
+
       await this.publishAnalytics(event, {
         type: 'dm_sent',
         recipientXUserId: result.data?.recipientId,
@@ -72,6 +82,40 @@ export class CampaignDmSenderService {
         error: message,
       });
     }
+  }
+
+  private async recordOutboundMessage(
+    event: CampaignDmReadyEvent,
+    connection: XConnectionDocument,
+    recipientId: string | undefined,
+  ): Promise<void> {
+    if (!recipientId) {
+      this.logger.warn(
+        `Campaign DM sent without recipientId; skipping chat history jobId=${event.jobId} ` +
+          `to=@${event.recipientUsername}`,
+      );
+      return;
+    }
+
+    const conversationId = buildConversationId(event.xUserId, recipientId);
+    const now = new Date();
+
+    await this.dmMessageModel.create({
+      orgId: new Types.ObjectId(event.orgId),
+      connectionId: connection._id,
+      xUserId: event.xUserId,
+      xUsername: connection.xUsername,
+      conversationId,
+      recipientId,
+      recipientUsername: event.recipientUsername,
+      direction: 'outbound',
+      text: event.messageText,
+      processedAt: now,
+    });
+
+    this.logger.log(
+      `Recorded campaign DM in chat history jobId=${event.jobId} conversation=${conversationId}`,
+    );
   }
 
   private async publishAnalytics(

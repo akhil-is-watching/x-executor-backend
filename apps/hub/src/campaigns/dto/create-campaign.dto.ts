@@ -8,10 +8,17 @@ import {
   IsString,
   ArrayMaxSize,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
 export class CreateCampaignDto {
+  @ApiProperty({ example: 'Q1 outreach', maxLength: 100 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name!: string;
+
   @ApiProperty({
     type: [String],
     example: ['alice', 'bob'],

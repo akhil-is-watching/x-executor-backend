@@ -1,19 +1,23 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { RedisService } from '@app/redis';
 import { XConnection, XConnectionDocument } from '../schemas/x-connection.schema';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
+import { XApiService } from '../oauth/x-api.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
 
 export const XCHAT_SECRET_REDIS_PREFIX = 'xchat:secret:';
 
 @Injectable()
 export class ConnectionsService {
+  private readonly logger = new Logger(ConnectionsService.name);
+
   constructor(
     @InjectModel(XConnection.name)
     private readonly connectionModel: Model<XConnectionDocument>,
     private readonly webhooksService: WebhooksService,
+    private readonly xApi: XApiService,
     private readonly tokenCrypto: TokenCryptoService,
     private readonly redis: RedisService,
   ) {}
@@ -99,8 +103,45 @@ export class ConnectionsService {
     }
 
     await this.webhooksService.revokeForConnection(connection);
-    connection.revokedAt = new Date();
-    await connection.save();
+    await this.logoutOAuthConnection(connection);
+    await this.redis.del(`${XCHAT_SECRET_REDIS_PREFIX}${connection.xUserId}`);
+
+    await this.connectionModel.updateOne(
+      { _id: connection._id },
+      {
+        $set: { revokedAt: new Date() },
+        $unset: {
+          accessTokenEnc: 1,
+          accessTokenSecretEnc: 1,
+          authTokenEnc: 1,
+          xchatPinEnc: 1,
+          refreshTokenEnc: 1,
+          tokenExpiresAt: 1,
+        },
+      },
+    );
+
     return { revoked: true };
+  }
+
+  private async logoutOAuthConnection(
+    connection: XConnectionDocument,
+  ): Promise<void> {
+    if (!connection.accessTokenEnc || !connection.accessTokenSecretEnc) {
+      return;
+    }
+
+    try {
+      const accessToken = this.tokenCrypto.decrypt(connection.accessTokenEnc);
+      const accessTokenSecret = this.tokenCrypto.decrypt(
+        connection.accessTokenSecretEnc,
+      );
+      await this.xApi.invalidateOAuth1AccessToken(accessToken, accessTokenSecret);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `X OAuth logout failed for @${connection.xUsername}: ${message}`,
+      );
+    }
   }
 }

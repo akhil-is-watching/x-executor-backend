@@ -12,11 +12,13 @@ import { OrgMemberGuard } from '../guards/org-member.guard';
 import { OrgAdminGuard } from '../guards/org-admin.guard';
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { CryptoModule } from '../crypto/crypto.module';
+import { OAuthModule } from '../oauth/oauth.module';
 
 @Module({
   imports: [
     CryptoModule,
     RedisModule,
+    OAuthModule,
     WebhooksModule,
     MongooseModule.forFeature([
       { name: XConnection.name, schema: XConnectionSchema },

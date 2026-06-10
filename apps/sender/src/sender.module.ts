@@ -14,6 +14,7 @@ import {
   XConnection,
   XConnectionSchema,
 } from './schemas/x-connection.schema';
+import { DmMessage, DmMessageSchema } from './schemas/dm-message.schema';
 import { SenderController } from './sender.controller';
 
 @Module({
@@ -30,6 +31,7 @@ import { SenderController } from './sender.controller';
     }),
     MongooseModule.forFeature([
       { name: XConnection.name, schema: XConnectionSchema },
+      { name: DmMessage.name, schema: DmMessageSchema },
     ]),
     NatsJsModule,
     RedisModule,

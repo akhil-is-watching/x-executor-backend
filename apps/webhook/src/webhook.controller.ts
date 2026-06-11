@@ -30,7 +30,7 @@ export class WebhookController {
     private readonly config: ConfigService,
   ) {}
 
-  @Get(['webhooks/incoming', 'webhooks/incoming/'])
+  @Get(['webhook/incoming', 'webhook/incoming/'])
   handleCrc(@Query('crc_token') crcToken: string | undefined) {
     if (!crcToken) {
       throw new BadRequestException('Missing crc_token query parameter');
@@ -40,7 +40,7 @@ export class WebhookController {
     return createCrcResponse(crcToken, consumerSecret);
   }
 
-  @Post('webhooks/incoming')
+  @Post('webhook/incoming')
   @HttpCode(200)
   async receive(
     @Headers('x-twitter-webhooks-signature') signature: string | undefined,

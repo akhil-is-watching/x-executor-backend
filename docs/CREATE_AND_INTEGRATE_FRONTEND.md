@@ -163,7 +163,7 @@ Use an empty API base in dev so requests hit `/xbot/v1/api/...` via the proxy.
 
 ### Option B — Separate repo (recommended pattern)
 
-The reference app uses **Bun** with a small server proxy (`src/hub-proxy.ts`): browser calls same-origin `/api/hub/*`, server forwards to Hub `/xbot/v1/api/*`.
+The reference app uses **Bun** with a small server proxy (`src/hub-proxy.ts`): browser calls same-origin `/xbot/v1/api/hub/*`, server forwards to `HUB_API_URL`.
 
 On **Vercel** (static `dist/`), skip the proxy: set `PUBLIC_HUB_API_URL` to the Hub origin at **build time**. Hub enables CORS (`origin: '*'` in `apps/hub/src/main.ts`).
 

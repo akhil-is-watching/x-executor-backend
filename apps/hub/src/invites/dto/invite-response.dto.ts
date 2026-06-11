@@ -9,7 +9,7 @@ export class InviteDto {
 
   @ApiProperty({
     example:
-      'https://hub.example.com/xbot/v1/api/oauth/x/start?invite=abc123',
+      'https://hub.example.com/xbot/v1/api/hub/oauth/x/start?invite=abc123',
   })
   inviteUrl!: string;
 

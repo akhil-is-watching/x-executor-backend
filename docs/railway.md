@@ -43,7 +43,7 @@ For local development, the root `.env.example` still lists all variables in one 
      NATS_URL=nats://${{Nats.RAILWAY_PRIVATE_DOMAIN}}:4222
      HUB_PUBLIC_BASE_URL=https://${{Hub.RAILWAY_PUBLIC_DOMAIN}}
      WEBHOOK_PUBLIC_BASE_URL=https://${{Webhook.RAILWAY_PUBLIC_DOMAIN}}
-     X_REDIRECT_URI=https://${{Hub.RAILWAY_PUBLIC_DOMAIN}}/xbot/v1/api/oauth/x/callback
+     X_REDIRECT_URI=https://${{Hub.RAILWAY_PUBLIC_DOMAIN}}/xbot/v1/api/hub/oauth/x/callback
      ```
      Rename `Nats` in references to match your Railway service name.
 

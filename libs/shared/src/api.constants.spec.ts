@@ -1,17 +1,20 @@
 import {
   ANALYTICS_HEALTH_PATH,
   API_GLOBAL_PREFIX,
+  HUB_API_PREFIX,
   HUB_HEALTH_PATH,
   PROCESSOR_HEALTH_PATH,
   SCHEDULER_HEALTH_PATH,
   SENDER_HEALTH_PATH,
   WEBHOOK_HEALTH_PATH,
   apiRoutePath,
+  hubApiRoutePath,
 } from './api.constants';
 
 describe('api.constants', () => {
   it('defines expected global prefix', () => {
     expect(API_GLOBAL_PREFIX).toBe('xbot/v1/api');
+    expect(HUB_API_PREFIX).toBe('xbot/v1/api/hub');
   });
 
   it('maps each service to a unique health path', () => {
@@ -26,7 +29,7 @@ describe('api.constants', () => {
 
     expect(new Set(paths).size).toBe(paths.length);
     expect(paths).toEqual([
-      'hub/health',
+      'health',
       'webhook/health',
       'processor/health',
       'sender/health',
@@ -36,7 +39,7 @@ describe('api.constants', () => {
   });
 
   it('builds full HTTP paths', () => {
-    expect(apiRoutePath(HUB_HEALTH_PATH)).toBe('/xbot/v1/api/hub/health');
+    expect(hubApiRoutePath(HUB_HEALTH_PATH)).toBe('/xbot/v1/api/hub/health');
     expect(apiRoutePath(WEBHOOK_HEALTH_PATH)).toBe(
       '/xbot/v1/api/webhook/health',
     );

@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
 import { randomBytes } from 'crypto';
-import { API_GLOBAL_PREFIX, HUB_HEALTH_PATH, apiRoutePath } from '@app/shared';
+import { API_GLOBAL_PREFIX, HUB_API_PREFIX, HUB_HEALTH_PATH, hubApiRoutePath } from '@app/shared';
 import { NatsJsService } from '@app/nats-js';
 import { XApiService } from '../src/oauth/x-api.service';
 import { RedisService } from '@app/redis';
@@ -71,7 +71,7 @@ describe('Hub (e2e)', () => {
     process.env.X_API_KEY = 'test-api-key';
     process.env.X_API_KEY_SECRET = 'test-api-secret';
     process.env.X_REDIRECT_URI =
-      `http://localhost:3000/${API_GLOBAL_PREFIX}/oauth/x/callback`;
+      `http://localhost:3000/${HUB_API_PREFIX}/oauth/x/callback`;
     process.env.X_REGISTER_WEBHOOKS_WITH_X = 'false';
 
     HubModule = require('../src/hub.module').HubModule;
@@ -88,7 +88,7 @@ describe('Hub (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix(API_GLOBAL_PREFIX);
+    app.setGlobalPrefix(HUB_API_PREFIX);
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
@@ -104,16 +104,16 @@ describe('Hub (e2e)', () => {
     }
   });
 
-  it(`GET ${apiRoutePath(HUB_HEALTH_PATH)}`, () => {
+  it(`GET ${hubApiRoutePath(HUB_HEALTH_PATH)}`, () => {
     return request(app.getHttpServer())
-      .get(apiRoutePath(HUB_HEALTH_PATH))
+      .get(hubApiRoutePath(HUB_HEALTH_PATH))
       .expect(200)
       .expect({ status: 'ok' });
   });
 
   it('registers, creates org, invite, oauth callback, lists connection', async () => {
     const register = await request(app.getHttpServer())
-      .post('/xbot/v1/api/auth/register')
+      .post('/xbot/v1/api/hub/auth/register')
       .send({ email: 'owner@example.com', password: 'password123' })
       .expect(201);
 
@@ -121,7 +121,7 @@ describe('Hub (e2e)', () => {
     expect(token).toBeDefined();
 
     const org = await request(app.getHttpServer())
-      .post('/xbot/v1/api/orgs')
+      .post('/xbot/v1/api/hub/orgs')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Acme Corp' })
       .expect(201);
@@ -129,7 +129,7 @@ describe('Hub (e2e)', () => {
     const orgId = org.body.id;
 
     const invite = await request(app.getHttpServer())
-      .post(`/xbot/v1/api/orgs/${orgId}/invites`)
+      .post(`/xbot/v1/api/hub/orgs/${orgId}/invites`)
       .set('Authorization', `Bearer ${token}`)
       .send({ expiresInHours: 24, maxUses: 5 })
       .expect(201);
@@ -142,7 +142,7 @@ describe('Hub (e2e)', () => {
     });
 
     const callback = await request(app.getHttpServer())
-      .get('/xbot/v1/api/oauth/x/callback')
+      .get('/xbot/v1/api/hub/oauth/x/callback')
       .query({ oauth_token: oauthToken, oauth_verifier: 'oauth-verifier-test' })
       .expect(200);
 
@@ -152,7 +152,7 @@ describe('Hub (e2e)', () => {
     expect(callback.body.subscribed).toBe(false);
 
     const connections = await request(app.getHttpServer())
-      .get(`/xbot/v1/api/orgs/${orgId}/connections`)
+      .get(`/xbot/v1/api/hub/orgs/${orgId}/connections`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -165,20 +165,20 @@ describe('Hub (e2e)', () => {
 
   it('rejects creating a second organization for the same user', async () => {
     const register = await request(app.getHttpServer())
-      .post('/xbot/v1/api/auth/register')
+      .post('/xbot/v1/api/hub/auth/register')
       .send({ email: 'solo@example.com', password: 'password123' })
       .expect(201);
 
     const token = register.body.accessToken;
 
     await request(app.getHttpServer())
-      .post('/xbot/v1/api/orgs')
+      .post('/xbot/v1/api/hub/orgs')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'First Org' })
       .expect(201);
 
     await request(app.getHttpServer())
-      .post('/xbot/v1/api/orgs')
+      .post('/xbot/v1/api/hub/orgs')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Second Org' })
       .expect(409);

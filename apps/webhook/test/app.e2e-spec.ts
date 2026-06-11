@@ -97,7 +97,7 @@ describe('Webhook (e2e)', () => {
     });
 
     const crc = await request(app.getHttpServer())
-      .get('/xbot/v1/api/webhooks/incoming')
+      .get('/xbot/v1/api/webhook/incoming')
       .query({ crc_token: 'crc-challenge' })
       .expect(200);
 
@@ -113,7 +113,7 @@ describe('Webhook (e2e)', () => {
     const signature = signWebhookBody(rawBody, process.env.X_CLIENT_SECRET!);
 
     const received = await request(app.getHttpServer())
-      .post('/xbot/v1/api/webhooks/incoming')
+      .post('/xbot/v1/api/webhook/incoming')
       .set('Content-Type', 'application/json')
       .set('x-twitter-webhooks-signature', signature)
       .send(rawBody)
@@ -134,7 +134,7 @@ describe('Webhook (e2e)', () => {
     });
 
     await request(app.getHttpServer())
-      .post('/xbot/v1/api/webhooks/incoming')
+      .post('/xbot/v1/api/webhook/incoming')
       .set('Content-Type', 'application/json')
       .set('x-twitter-webhooks-signature', 'sha256=invalid')
       .send(rawBody)

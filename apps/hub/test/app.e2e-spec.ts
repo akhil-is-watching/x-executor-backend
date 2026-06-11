@@ -147,7 +147,7 @@ describe('Hub (e2e)', () => {
       .expect(200);
 
     expect(callback.body.webhookUrl).toBe(
-      'http://localhost:3001/xbot/v1/api/webhooks/incoming',
+      'http://localhost:3001/xbot/v1/api/webhook/incoming',
     );
     expect(callback.body.subscribed).toBe(false);
 

@@ -39,7 +39,7 @@ export class XWebhooksApiService {
     const base = this.config
       .getOrThrow<string>('WEBHOOK_PUBLIC_BASE_URL')
       .replace(/\/$/, '');
-    return `${base}/${API_GLOBAL_PREFIX}/webhooks/incoming`;
+    return `${base}/${API_GLOBAL_PREFIX}/webhook/incoming`;
   }
 
   async ensureAppWebhookRegistered(): Promise<string> {

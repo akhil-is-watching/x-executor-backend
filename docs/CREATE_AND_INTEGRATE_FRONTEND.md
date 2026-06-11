@@ -87,7 +87,7 @@ flowchart LR
    - Callback URL on Hub (must match exactly):
      - Local: `http://localhost:3000/xbot/v1/api/oauth/x/callback`
      - Production: `https://<hub-domain>/xbot/v1/api/oauth/x/callback`
-3. **Shared webhook URL** (one per deployment): `{WEBHOOK_PUBLIC_BASE_URL}/xbot/v1/api/webhooks/incoming` — registered when users connect if `X_REGISTER_WEBHOOKS_WITH_X=true`.
+3. **Shared webhook URL** (one per deployment): `{WEBHOOK_PUBLIC_BASE_URL}/xbot/v1/api/webhook/incoming` — registered when users connect if `X_REGISTER_WEBHOOKS_WITH_X=true`.
 
 ### Start Hub locally
 
@@ -271,7 +271,7 @@ Display query params: `orgId`, `xUserId`, `xUsername`, `webhookUrl`, `subscribed
     "xUsername": "handle",
     "scopes": [],
     "connectedAt": "...",
-    "webhookUrl": "https://webhook.../xbot/v1/api/webhooks/incoming",
+    "webhookUrl": "https://webhook.../xbot/v1/api/webhook/incoming",
     "subscribed": true,
     "hasAuthToken": false,
     "hasXchatPin": false

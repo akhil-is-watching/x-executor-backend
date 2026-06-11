@@ -14,7 +14,7 @@ describe('WebhooksService', () => {
 
   const mockXWebhooksApi = {
     getSharedWebhookUrl: jest.fn(
-      () => 'http://localhost:3001/xbot/v1/api/webhooks/incoming',
+      () => 'http://localhost:3001/xbot/v1/api/webhook/incoming',
     ),
     isEnabled: jest.fn(() => false),
     ensureAppWebhookRegistered: jest.fn(),
@@ -62,7 +62,7 @@ describe('WebhooksService', () => {
 
   it('returns shared webhook URL', () => {
     expect(service.getSharedWebhookUrl()).toBe(
-      'http://localhost:3001/xbot/v1/api/webhooks/incoming',
+      'http://localhost:3001/xbot/v1/api/webhook/incoming',
     );
   });
 
@@ -82,7 +82,7 @@ describe('WebhooksService', () => {
     );
 
     expect(result.webhookUrl).toBe(
-      'http://localhost:3001/xbot/v1/api/webhooks/incoming',
+      'http://localhost:3001/xbot/v1/api/webhook/incoming',
     );
     expect(result.subscribed).toBe(false);
     expect(webhookModel.create).not.toHaveBeenCalled();

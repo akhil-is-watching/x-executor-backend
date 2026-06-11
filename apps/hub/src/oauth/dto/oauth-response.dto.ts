@@ -11,7 +11,7 @@ export class OAuthCallbackResultDto {
   xUsername!: string;
 
   @ApiProperty({
-    example: 'https://webhook.example.com/xbot/v1/api/webhooks/incoming',
+    example: 'https://webhook.example.com/xbot/v1/api/webhook/incoming',
   })
   webhookUrl!: string;
 

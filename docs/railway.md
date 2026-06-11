@@ -73,7 +73,7 @@ NATS: set service variable `PORT=8222` so Railway hits `GET /healthz` on the HTT
 
 All connections use one ingress URL on the Webhook service:
 
-`https://<webhook-service>/xbot/v1/api/webhooks/incoming`
+`https://<webhook-service>/xbot/v1/api/webhook/incoming`
 
 On each X OAuth (OAuth 1.0a 3-legged), Hub:
 
@@ -89,14 +89,14 @@ The Webhook app routes events by `for_user_id` in the payload (fans out if the s
 
 1. In Developer Portal → **Webhooks**, confirm config `2062592785111478272` (or latest Hub log id) shows **Valid** — invalid webhooks receive no events ([docs](https://docs.x.com/x-api/webhooks/introduction)).
 2. Re-OAuth after deploy (Hub logs `valid=true` and may trigger `PUT /2/webhooks/:id` CRC if invalid).
-3. Test with a **favorite** on the subscribed account’s tweet ([quickstart](https://docs.x.com/x-api/account-activity/quickstart)), wait ~10s; watch Webhook for `HTTP POST /xbot/v1/api/webhooks/incoming`.
+3. Test with a **favorite** on the subscribed account’s tweet ([quickstart](https://docs.x.com/x-api/account-activity/quickstart)), wait ~10s; watch Webhook for `HTTP POST /xbot/v1/api/webhook/incoming`.
 4. **DMs:** some conversations use XChat encryption — X API sends **no webhook** for those ([known limitation](https://github.com/aws-samples/sample-amazon-connect-social-integration/blob/main/x_setup.md)).
 5. Prove logging: signed POST test (replace `YOUR_API_KEY_SECRET`):
 
 ```bash
 BODY='{"for_user_id":"1390625949587173378","tweet_create_events":[]}'
 SIG=$(node -e "const c=require('crypto');const b=process.argv[1];const s=process.argv[2];console.log('sha256='+c.createHmac('sha256',s).update(b).digest('base64'))" "$BODY" "YOUR_API_KEY_SECRET")
-curl -sS -X POST "https://webhook-x-executor.up.railway.app/xbot/v1/api/webhooks/incoming" \
+curl -sS -X POST "https://webhook-x-executor.up.railway.app/xbot/v1/api/webhook/incoming" \
   -H "Content-Type: application/json" \
   -H "x-twitter-webhooks-signature: $SIG" \
   -d "$BODY"
@@ -139,7 +139,7 @@ Webhook publishes to JetStream subject `x.webhook.received` after a successful P
 - `WEBHOOK_PUBLIC_BASE_URL` — public HTTPS Webhook service (CRC + POST target).
 - **Webhook service CRC:** set `X_CONSUMER_SECRET` to the **API Key Secret** (same as `X_API_KEY_SECRET`).
 
-**CRC error `Invalid response_token`:** almost always wrong secret or wrong URL path. Register exactly `https://<webhook-host>/xbot/v1/api/webhooks/incoming` (no trailing slash). On the **Webhook** Railway service, set `X_CONSUMER_SECRET` to the API Key Secret, redeploy, then re-validate in X console.
+**CRC error `Invalid response_token`:** almost always wrong secret or wrong URL path. Register exactly `https://<webhook-host>/xbot/v1/api/webhook/incoming` (no trailing slash). On the **Webhook** Railway service, set `X_CONSUMER_SECRET` to the API Key Secret, redeploy, then re-validate in X console.
 
 Requires **Account Activity API** access on your X app. After deploy, re-connect X accounts; delete old per-user webhook configs in the Developer Console if any remain.
 

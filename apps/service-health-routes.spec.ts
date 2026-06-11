@@ -4,12 +4,14 @@ import request from 'supertest';
 import {
   ANALYTICS_HEALTH_PATH,
   API_GLOBAL_PREFIX,
+  HUB_API_PREFIX,
   HUB_HEALTH_PATH,
   PROCESSOR_HEALTH_PATH,
   SCHEDULER_HEALTH_PATH,
   SENDER_HEALTH_PATH,
   WEBHOOK_HEALTH_PATH,
   apiRoutePath,
+  hubApiRoutePath,
 } from '@app/shared';
 import { AnalyticsController } from './analytics/src/analytics.controller';
 import { HubController } from './hub/src/hub.controller';
@@ -38,7 +40,7 @@ describe('Service health routes', () => {
         }).compile();
 
         app = moduleFixture.createNestApplication();
-        app.setGlobalPrefix(API_GLOBAL_PREFIX);
+        app.setGlobalPrefix(name === 'hub' ? HUB_API_PREFIX : API_GLOBAL_PREFIX);
         await app.init();
       });
 
@@ -46,9 +48,9 @@ describe('Service health routes', () => {
         await app.close();
       });
 
-      it(`GET ${apiRoutePath(path)}`, () => {
+      it(`GET ${name === 'hub' ? hubApiRoutePath(path) : apiRoutePath(path)}`, () => {
         return request(app.getHttpServer())
-          .get(apiRoutePath(path))
+          .get(name === 'hub' ? hubApiRoutePath(path) : apiRoutePath(path))
           .expect(200)
           .expect({ status: 'ok' });
       });

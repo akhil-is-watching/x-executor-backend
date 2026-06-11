@@ -53,7 +53,7 @@ describe('InvitesService', () => {
           'tok-1',
         ),
       ).toBe(
-        'https://hub.example.com/xbot/v1/api/oauth/x/start?invite=tok-1',
+        'https://hub.example.com/xbot/v1/api/hub/oauth/x/start?invite=tok-1',
       );
     });
   });

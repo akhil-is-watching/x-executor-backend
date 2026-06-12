@@ -1,11 +1,11 @@
-name: development-ci-cd
+name: development-all-service-ci-cd
 on:
 
    workflow_dispatch:
   
 jobs:
   dockerize:
-    name: Dockerize and Deploy
+    name: Dockerize and Deploy to all services
     runs-on: ubuntu-latest
 
     steps:

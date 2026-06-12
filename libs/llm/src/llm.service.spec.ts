@@ -48,6 +48,12 @@ describe('extractReplyText', () => {
     expect(extractReplyText('', unknownReply)).toBe(unknownReply);
     expect(extractReplyText('   ', unknownReply)).toBe(unknownReply);
   });
+
+  it('returns plain text directly when model skips JSON format', () => {
+    expect(
+      extractReplyText('Hey there! How can I help you today?', unknownReply),
+    ).toBe('Hey there! How can I help you today?');
+  });
 });
 
 describe('LlmService', () => {
@@ -169,19 +175,35 @@ describe('LlmService', () => {
     expect(result.replyText).toBe('We ship on Fridays.');
   });
 
-  it('falls back to unknown reply for malformed output', async () => {
+  it('uses plain-text reply when model skips JSON format', async () => {
     createMock.mockResolvedValue({
-      choices: [{ message: { content: 'not valid json or reply' } }],
+      choices: [{ message: { content: 'Hey there! How can I help you?' } }],
     });
 
     const result = await service.generateReply({
-      systemPrompt: 'Shipping is on Fridays.',
+      systemPrompt: 'You are a support bot.',
       unknownReply: "I don't know",
-      userMessage: 'What is your refund policy?',
+      userMessage: 'Hey',
     });
 
-    expect(result.isKnownAnswer).toBe(false);
-    expect(result.replyText).toBe("I don't know");
+    expect(result.isKnownAnswer).toBe(true);
+    expect(result.replyText).toBe('Hey there! How can I help you?');
+  });
+
+  it('includes GREETING RULE in system content sent to OpenAI', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: '{"reply":"Hey! How can I help?"}' } }],
+    });
+
+    await service.generateReply({
+      systemPrompt: 'You are a support bot.',
+      unknownReply: "I don't know",
+      userMessage: 'Hey',
+    });
+
+    const calledWith = createMock.mock.calls[0][0] as { messages: Array<{ role: string; content: string }> };
+    const systemMsg = calledWith.messages[0].content;
+    expect(systemMsg).toContain('GREETING RULE');
   });
 
   it('includes conversation history in OpenAI messages', async () => {

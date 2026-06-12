@@ -72,12 +72,13 @@ export function extractReplyText(raw: string, unknownReply: string): string {
     }
   }
 
-  const stripped = stripThinkingBlocks(trimmed);
   if (containsThinkingBlock(trimmed)) {
+    const stripped = stripThinkingBlocks(trimmed);
     return stripped || unknownReply;
   }
 
-  return unknownReply;
+  // Model returned plain text (no JSON, no thinking blocks) — use it directly.
+  return trimmed;
 }
 
 @Injectable()
@@ -102,6 +103,10 @@ export class LlmService {
       'You answer questions using ONLY the knowledge block below.',
       'Do not use outside knowledge, assumptions, or general world facts.',
       `If the knowledge is insufficient to answer, set the reply field to exactly: ${unknownReply}`,
+      '',
+      'GREETING RULE:',
+      'If the user sends a casual greeting (e.g. "hi", "hello", "hey", "what\'s up", "howdy", "good morning", etc.),',
+      'respond in a friendly, welcoming way and invite them to ask a question. Do NOT return the unknown reply for greetings.',
       '',
       'RESPONSE FORMAT:',
       'Respond with a single JSON object only. No markdown fences, no explanation, no reasoning.',

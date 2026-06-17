@@ -108,18 +108,39 @@ export function parseLlmResponse(raw: string): ParsedLlmResponse | null {
   return { replyText: trimmed, isKnownAnswer: true };
 }
 
+export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+
+export function resolveLlmModel(model: string, baseURL: string): string {
+  if (!baseURL.startsWith('https://openrouter.ai')) {
+    return model;
+  }
+  if (model.includes('/')) {
+    return model;
+  }
+  return `openai/${model}`;
+}
+
 @Injectable()
 export class LlmService {
   private readonly client: OpenAI;
   private readonly model: string;
 
   constructor(private readonly config: ConfigService) {
-    const baseURL = this.config.get<string>('OPENAI_BASE_URL');
+    const baseURL =
+      this.config.get<string>('OPENAI_BASE_URL') ?? OPENROUTER_BASE_URL;
+    const configuredModel = this.config.get<string>('OPENAI_MODEL') ?? 'gpt-4o-mini';
     this.client = new OpenAI({
       apiKey: this.config.getOrThrow<string>('OPENAI_API_KEY'),
-      ...(baseURL ? { baseURL } : {}),
+      baseURL,
+      ...(baseURL.startsWith('https://openrouter.ai')
+        ? {
+            defaultHeaders: {
+              'X-OpenRouter-Title': 'x-executor',
+            },
+          }
+        : {}),
     });
-    this.model = this.config.get<string>('OPENAI_MODEL') ?? 'gpt-4o-mini';
+    this.model = resolveLlmModel(configuredModel, baseURL);
   }
 
   async generateReply(params: GenerateReplyParams): Promise<GenerateReplyResult> {

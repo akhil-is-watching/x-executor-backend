@@ -1,7 +1,12 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import OpenAI from 'openai';
-import { LlmService, parseLlmResponse } from './llm.service';
+import {
+  LlmService,
+  OPENROUTER_BASE_URL,
+  parseLlmResponse,
+  resolveLlmModel,
+} from './llm.service';
 
 const createMock = jest.fn();
 const OpenAIMock = OpenAI as jest.MockedClass<typeof OpenAI>;
@@ -84,6 +89,26 @@ describe('parseLlmResponse', () => {
   });
 });
 
+describe('resolveLlmModel', () => {
+  it('prefixes bare model ids for OpenRouter', () => {
+    expect(resolveLlmModel('gpt-4o-mini', OPENROUTER_BASE_URL)).toBe(
+      'openai/gpt-4o-mini',
+    );
+  });
+
+  it('leaves provider-qualified models unchanged on OpenRouter', () => {
+    expect(
+      resolveLlmModel('anthropic/claude-3.5-sonnet', OPENROUTER_BASE_URL),
+    ).toBe('anthropic/claude-3.5-sonnet');
+  });
+
+  it('leaves model ids unchanged for non-OpenRouter base URLs', () => {
+    expect(resolveLlmModel('gpt-4o-mini', 'https://api.openai.com/v1')).toBe(
+      'gpt-4o-mini',
+    );
+  });
+});
+
 describe('LlmService', () => {
   let service: LlmService;
 
@@ -111,6 +136,14 @@ describe('LlmService', () => {
     }).compile();
 
     service = module.get(LlmService);
+
+    expect(OpenAIMock).toHaveBeenCalledWith({
+      apiKey: 'test-key',
+      baseURL: OPENROUTER_BASE_URL,
+      defaultHeaders: {
+        'X-OpenRouter-Title': 'x-executor',
+      },
+    });
   });
 
   it('passes OPENAI_BASE_URL to the OpenAI client when set', async () => {
@@ -162,6 +195,7 @@ describe('LlmService', () => {
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        model: 'openai/gpt-4o-mini',
         response_format: { type: 'json_object' },
       }),
     );

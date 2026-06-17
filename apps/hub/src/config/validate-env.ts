@@ -10,6 +10,7 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     'X_API_KEY_SECRET',
     'X_REDIRECT_URI',
     'NATS_URL',
+    'OPENAI_API_KEY',
   ] as const;
 
   for (const key of required) {

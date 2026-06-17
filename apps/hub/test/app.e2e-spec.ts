@@ -73,6 +73,7 @@ describe('Hub (e2e)', () => {
     process.env.X_REDIRECT_URI =
       `http://localhost:3000/${HUB_API_PREFIX}/oauth/x/callback`;
     process.env.X_REGISTER_WEBHOOKS_WITH_X = 'false';
+    process.env.OPENAI_API_KEY = 'test-openai-key';
 
     HubModule = require('../src/hub.module').HubModule;
 

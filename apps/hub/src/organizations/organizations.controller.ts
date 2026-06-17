@@ -16,6 +16,8 @@ import {
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationPromptDto } from './dto/update-organization-prompt.dto';
+import { ChatTestDto } from './dto/chat-test.dto';
+import { ChatTestResponseDto } from './dto/chat-test-response.dto';
 import {
   MemberDto,
   OrganizationDto,
@@ -84,5 +86,18 @@ export class OrganizationsController {
     @Body() dto: UpdateOrganizationPromptDto,
   ) {
     return this.organizationsService.updatePrompt(orgId, dto);
+  }
+
+  @Post(':orgId/chat/test')
+  @UseGuards(OrgMemberGuard, OrgAdminGuard)
+  @ApiOperation({
+    summary: 'Test bot instructions against the LLM (admin only)',
+  })
+  @ApiResponse({ status: 200, type: ChatTestResponseDto })
+  @ApiResponse({ status: 400, description: 'Missing system prompt' })
+  @ApiResponse({ status: 403, description: 'Admin required' })
+  @ApiResponse({ status: 404, description: 'Organization not found' })
+  testChat(@Param('orgId') orgId: string, @Body() dto: ChatTestDto) {
+    return this.organizationsService.testChat(orgId, dto);
   }
 }

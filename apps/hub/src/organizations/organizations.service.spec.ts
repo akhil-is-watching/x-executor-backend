@@ -1,7 +1,9 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
+import { LlmService } from '@app/llm';
 import { OrgRole } from '../schemas/organization-membership.schema';
 import { OrganizationsService } from './organizations.service';
 import { Organization } from '../schemas/organization.schema';
@@ -14,12 +16,15 @@ describe('OrganizationsService', () => {
   const userId = new Types.ObjectId();
   const orgId = new Types.ObjectId();
 
+  const mockLlm = { generateReply: jest.fn() };
+
   const orgModel = {
     create: jest.fn().mockResolvedValue({
       _id: orgId,
       name: 'Acme Corp',
       createdBy: userId,
     }),
+    findById: jest.fn(),
   };
 
   const membershipModel = {
@@ -46,6 +51,14 @@ describe('OrganizationsService', () => {
           useValue: membershipModel,
         },
         { provide: getModelToken(User.name), useValue: userModel },
+        { provide: LlmService, useValue: mockLlm },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (name: string) =>
+              name === 'DEFAULT_UNKNOWN_REPLY' ? "I don't know" : undefined,
+          },
+        },
       ],
     }).compile();
 
@@ -77,5 +90,67 @@ describe('OrganizationsService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
 
     expect(orgModel.create).not.toHaveBeenCalled();
+  });
+
+  it('testChat uses draft prompt and returns LLM reply', async () => {
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'Saved prompt',
+      unknownReply: 'Saved fallback',
+    });
+    mockLlm.generateReply.mockResolvedValue({
+      replyText: 'Yes, Noah supports Solana.',
+      isKnownAnswer: true,
+    });
+
+    const result = await service.testChat(orgId.toString(), {
+      userMessage: 'Which chains?',
+      systemPrompt: 'Noah supports Solana and Irys.',
+      unknownReply: 'No info',
+    });
+
+    expect(mockLlm.generateReply).toHaveBeenCalledWith({
+      systemPrompt: 'Noah supports Solana and Irys.',
+      unknownReply: 'No info',
+      userMessage: 'Which chains?',
+    });
+    expect(result).toEqual({
+      reply: 'Yes, Noah supports Solana.',
+      isKnownAnswer: true,
+    });
+  });
+
+  it('testChat falls back to org prompt when draft omitted', async () => {
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'Org prompt text',
+      unknownReply: 'Org fallback',
+    });
+    mockLlm.generateReply.mockResolvedValue({
+      replyText: 'Hello!',
+      isKnownAnswer: true,
+    });
+
+    await service.testChat(orgId.toString(), { userMessage: 'Hi' });
+
+    expect(mockLlm.generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: 'Org prompt text',
+        unknownReply: 'Org fallback',
+      }),
+    );
+  });
+
+  it('testChat rejects when no draft and org has no systemPrompt', async () => {
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: undefined,
+    });
+
+    await expect(
+      service.testChat(orgId.toString(), { userMessage: 'Hi' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(mockLlm.generateReply).not.toHaveBeenCalled();
   });
 });

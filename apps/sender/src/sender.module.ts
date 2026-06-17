@@ -10,6 +10,8 @@ import { DmSenderService } from './dm/dm-sender.service';
 import { ReplyConsumerService } from './dm/reply-consumer.service';
 import { CampaignConsumerService } from './campaign/campaign-consumer.service';
 import { CampaignDmSenderService } from './campaign/campaign-dm-sender.service';
+import { HandoffNotifyConsumerService } from './handoff/handoff-notify-consumer.service';
+import { HandoffNotifySenderService } from './handoff/handoff-notify-sender.service';
 import {
   XConnection,
   XConnectionSchema,
@@ -44,6 +46,8 @@ import { SenderController } from './sender.controller';
     ReplyConsumerService,
     CampaignDmSenderService,
     CampaignConsumerService,
+    HandoffNotifySenderService,
+    HandoffNotifyConsumerService,
   ],
 })
 export class SenderModule {}

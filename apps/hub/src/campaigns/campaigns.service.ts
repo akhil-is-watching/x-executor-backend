@@ -52,7 +52,13 @@ export class CampaignsService {
       );
     }
 
-    if (
+    const selectedConnectionIds = dto.connectionIds?.length
+      ? [...new Set(dto.connectionIds.map((id) => id.trim()).filter(Boolean))]
+      : undefined;
+
+    if (selectedConnectionIds?.length) {
+      await this.validateSelectedConnections(orgId, selectedConnectionIds);
+    } else if (
       dto.accountsToUse !== undefined &&
       dto.accountsToUse > eligibleAccountCount
     ) {
@@ -76,7 +82,12 @@ export class CampaignsService {
       cancelledCount: 0,
     };
 
-    if (dto.accountsToUse !== undefined) {
+    if (selectedConnectionIds?.length) {
+      campaignPayload.connectionIds = selectedConnectionIds.map(
+        (id) => new Types.ObjectId(id),
+      );
+      campaignPayload.accountsToUse = selectedConnectionIds.length;
+    } else if (dto.accountsToUse !== undefined) {
       campaignPayload.accountsToUse = dto.accountsToUse;
     }
 
@@ -100,6 +111,7 @@ export class CampaignsService {
       totalTargets: campaign.totalTargets,
       dmsPerHour: campaign.dmsPerHour,
       accountsToUse: campaign.accountsToUse,
+      connectionIds: campaign.connectionIds?.map((id) => id.toString()),
       messageText: campaign.messageText,
       targetUsernames: campaign.targetUsernames,
       createdAt: campaign.createdAt,
@@ -248,6 +260,7 @@ export class CampaignsService {
       totalTargets: campaign.totalTargets,
       dmsPerHour: campaign.dmsPerHour,
       accountsToUse: campaign.accountsToUse,
+      connectionIds: campaign.connectionIds?.map((id) => id.toString()),
       messagesScheduled: campaign.messagesScheduled,
       messagesSent: campaign.messagesSent,
       repliesReceived: campaign.repliesReceived,
@@ -265,11 +278,39 @@ export class CampaignsService {
   }
 
   private async countEligibleAccounts(orgId: string): Promise<number> {
-    return this.connectionModel.countDocuments({
+    return this.connectionModel.countDocuments(this.eligibleConnectionQuery(orgId));
+  }
+
+  private eligibleConnectionQuery(orgId: string) {
+    return {
       orgId: new Types.ObjectId(orgId),
       revokedAt: null,
       authTokenEnc: { $exists: true, $nin: [null, ''] },
+    };
+  }
+
+  private async validateSelectedConnections(
+    orgId: string,
+    connectionIds: string[],
+  ): Promise<void> {
+    for (const connectionId of connectionIds) {
+      if (!Types.ObjectId.isValid(connectionId)) {
+        throw new BadRequestException(
+          `Invalid connection ID: ${connectionId}`,
+        );
+      }
+    }
+
+    const foundCount = await this.connectionModel.countDocuments({
+      ...this.eligibleConnectionQuery(orgId),
+      _id: { $in: connectionIds.map((id) => new Types.ObjectId(id)) },
     });
+
+    if (foundCount !== connectionIds.length) {
+      throw new BadRequestException(
+        'One or more selected accounts are invalid or ineligible',
+      );
+    }
   }
 
   private async findCampaignOrThrow(

@@ -2,9 +2,10 @@ import { ConfigService } from '@nestjs/config';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
-import { NATS_SUBJECT_DM_REPLY_READY, NatsJsService } from '@app/nats-js';
+import { NATS_SUBJECT_DM_HANDOFF_NOTIFY, NATS_SUBJECT_DM_REPLY_READY, NatsJsService } from '@app/nats-js';
 import { GetxapiService } from '@app/getxapi';
-import { LlmService } from '@app/llm';
+import { DEFAULT_HANDOFF_MESSAGE, LlmService } from '@app/llm';
+import { RedisService } from '@app/redis';
 import type { XWebhookReceivedEvent } from '@app/shared';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
 import { XChatDecryptService } from '../xchat/xchat-decrypt.service';
@@ -29,7 +30,8 @@ describe('DmPipelineService', () => {
     extractLatestIncomingPlainText: jest.fn(),
     extractLatestIncomingPeerId: jest.fn(),
   };
-  const mockLlm = { generateReply: jest.fn() };
+  const mockLlm = { generateReply: jest.fn(), classifyHandoff: jest.fn() };
+  const mockRedis = { exists: jest.fn(), setex: jest.fn() };
 
   const connectionModel = { findOne: jest.fn() };
   const orgModel = { findById: jest.fn() };
@@ -86,6 +88,13 @@ describe('DmPipelineService', () => {
       replyText: 'We sell blue widgets.',
       isKnownAnswer: true,
     });
+    mockLlm.classifyHandoff.mockResolvedValue({
+      shouldHandoff: false,
+      notifyHandle: null,
+      category: null,
+    });
+    mockRedis.exists.mockResolvedValue(false);
+    mockRedis.setex.mockResolvedValue(undefined);
     campaignJobModel.findOne.mockResolvedValue(null);
     dmMessageModel.insertMany.mockResolvedValue([]);
 
@@ -97,6 +106,7 @@ describe('DmPipelineService', () => {
         { provide: GetxapiService, useValue: mockGetxapi },
         { provide: XChatDecryptService, useValue: mockXChatDecrypt },
         { provide: LlmService, useValue: mockLlm },
+        { provide: RedisService, useValue: mockRedis },
         {
           provide: ConfigService,
           useValue: {
@@ -283,5 +293,101 @@ describe('DmPipelineService', () => {
 
     expect(mockXChatDecrypt.decryptXChatEvent).not.toHaveBeenCalled();
     expect(mockNats.publishJson).not.toHaveBeenCalled();
+  });
+
+  it('returns fixed handoff reply when conversation is locked in Redis', async () => {
+    mockRedis.exists.mockResolvedValue(true);
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'We only sell blue widgets.',
+      handoffMessage: 'Please wait for our team.',
+    });
+
+    await service.handleWebhookEvent(baseEvent);
+
+    expect(mockLlm.classifyHandoff).not.toHaveBeenCalled();
+    expect(mockLlm.generateReply).not.toHaveBeenCalled();
+    expect(mockNats.publishJson).toHaveBeenCalledWith(
+      NATS_SUBJECT_DM_REPLY_READY,
+      expect.objectContaining({
+        replyText: 'Please wait for our team.',
+        isKnownAnswer: false,
+      }),
+    );
+  });
+
+  it('uses default handoff message when locked and org has no custom message', async () => {
+    mockRedis.exists.mockResolvedValue(true);
+
+    await service.handleWebhookEvent(baseEvent);
+
+    expect(mockNats.publishJson).toHaveBeenCalledWith(
+      NATS_SUBJECT_DM_REPLY_READY,
+      expect.objectContaining({
+        replyText: DEFAULT_HANDOFF_MESSAGE,
+      }),
+    );
+  });
+
+  it('locks conversation and publishes handoff notify when classification triggers', async () => {
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'We only sell blue widgets.',
+      handoffEnabled: true,
+      handoffConfig: 'Notify @agent for support',
+      llmModel: 'google/gemini-3.5-flash',
+    });
+    mockLlm.classifyHandoff.mockResolvedValue({
+      shouldHandoff: true,
+      notifyHandle: '@agent',
+      category: 'Support',
+    });
+
+    await service.handleWebhookEvent(baseEvent);
+
+    expect(mockLlm.classifyHandoff).toHaveBeenCalledWith({
+      handoffConfig: 'Notify @agent for support',
+      userMessage: 'hello',
+      model: 'google/gemini-3.5-flash',
+    });
+    expect(mockRedis.setex).toHaveBeenCalledWith(
+      `handoff:lock:${orgId.toString()}:3012852462-1345154135381794816`,
+      60 * 60 * 24,
+      '1',
+    );
+    expect(mockLlm.generateReply).not.toHaveBeenCalled();
+    expect(mockNats.publishJson).toHaveBeenCalledWith(
+      NATS_SUBJECT_DM_REPLY_READY,
+      expect.objectContaining({
+        replyText: DEFAULT_HANDOFF_MESSAGE,
+        isKnownAnswer: false,
+      }),
+    );
+    expect(mockNats.publishJson).toHaveBeenCalledWith(
+      NATS_SUBJECT_DM_HANDOFF_NOTIFY,
+      expect.objectContaining({
+        orgId: orgId.toString(),
+        connectionId: connectionId.toString(),
+        notifyHandle: '@agent',
+        category: 'Support',
+        userHandle: '@botuser',
+        userMessage: 'hello',
+        conversationId: '3012852462-1345154135381794816',
+      }),
+    );
+  });
+
+  it('skips handoff classification when handoff is disabled', async () => {
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'We only sell blue widgets.',
+      handoffEnabled: false,
+      handoffConfig: 'Notify @agent for support',
+    });
+
+    await service.handleWebhookEvent(baseEvent);
+
+    expect(mockLlm.classifyHandoff).not.toHaveBeenCalled();
+    expect(mockLlm.generateReply).toHaveBeenCalled();
   });
 });

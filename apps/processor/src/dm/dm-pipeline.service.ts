@@ -5,15 +5,18 @@ import { Model, Types } from 'mongoose';
 import { randomUUID } from 'crypto';
 import {
   NATS_SUBJECT_CAMPAIGN_ANALYTICS,
+  NATS_SUBJECT_DM_HANDOFF_NOTIFY,
   NATS_SUBJECT_DM_REPLY_READY,
   NatsJsService,
 } from '@app/nats-js';
 import { GetxapiService } from '@app/getxapi';
 import type { GetXApiDmMessage } from '@app/getxapi';
-import { LlmService } from '@app/llm';
+import { DEFAULT_HANDOFF_MESSAGE, LlmService } from '@app/llm';
+import { RedisService } from '@app/redis';
 import {
   isInboundDmWebhook,
   parseInboundDmFromWebhook,
+  type XDmHandoffNotifyEvent,
   type XDmReplyReadyEvent,
   type XWebhookReceivedEvent,
   type CampaignAnalyticsEvent,
@@ -37,6 +40,8 @@ import {
   DmMessageDocument,
 } from '../schemas/dm-message.schema';
 
+const HANDOFF_LOCK_TTL_SECONDS = 60 * 60 * 24;
+
 @Injectable()
 export class DmPipelineService {
   private readonly logger = new Logger(DmPipelineService.name);
@@ -55,6 +60,7 @@ export class DmPipelineService {
     private readonly xchatDecrypt: XChatDecryptService,
     private readonly llm: LlmService,
     private readonly natsJs: NatsJsService,
+    private readonly redis: RedisService,
     private readonly config: ConfigService,
   ) {}
 
@@ -263,6 +269,72 @@ export class DmPipelineService {
 
     await this.trackCampaignReply(event, recipientId);
 
+    const lockKey = this.handoffLockKey(event.orgId, resolvedConversationId);
+    const isLocked = await this.redis.exists(lockKey);
+    if (isLocked) {
+      const handoffMessage = this.resolveHandoffMessage(org);
+      await this.publishFixedReply({
+        event,
+        dmContext,
+        org,
+        resolvedConversationId,
+        recipientId,
+        inboundText,
+        replyText: handoffMessage,
+      });
+      return;
+    }
+
+    if (org.handoffEnabled && org.handoffConfig?.trim()) {
+      const classification = await this.llm.classifyHandoff({
+        handoffConfig: org.handoffConfig.trim(),
+        userMessage: inboundText,
+        model: org.llmModel?.trim() || undefined,
+      });
+
+      if (classification.shouldHandoff) {
+        await this.redis.setex(lockKey, HANDOFF_LOCK_TTL_SECONDS, '1');
+
+        const handoffMessage = this.resolveHandoffMessage(org);
+        await this.publishFixedReply({
+          event,
+          dmContext,
+          org,
+          resolvedConversationId,
+          recipientId,
+          inboundText,
+          replyText: handoffMessage,
+        });
+
+        if (classification.notifyHandle) {
+          const notifyEvent: XDmHandoffNotifyEvent = {
+            orgId: event.orgId,
+            connectionId: event.connectionId,
+            notifyHandle: classification.notifyHandle,
+            category: classification.category,
+            userHandle: `@${event.xUsername}`,
+            userMessage: inboundText,
+            conversationId: resolvedConversationId,
+            triggeredAt: new Date().toISOString(),
+          };
+          await this.natsJs.publishJson(
+            NATS_SUBJECT_DM_HANDOFF_NOTIFY,
+            notifyEvent,
+          );
+          this.logger.log(
+            `Published ${NATS_SUBJECT_DM_HANDOFF_NOTIFY} conversation=${resolvedConversationId} ` +
+              `notifyHandle=${classification.notifyHandle}`,
+          );
+        } else {
+          this.logger.warn(
+            `Handoff triggered without notifyHandle conversation=${resolvedConversationId}`,
+          );
+        }
+
+        return;
+      }
+    }
+
     const llmResult = await this.llm.generateReply({
       systemPrompt: org.systemPrompt.trim(),
       userMessage: inboundText,
@@ -314,6 +386,76 @@ export class DmPipelineService {
     await this.natsJs.publishJson(NATS_SUBJECT_DM_REPLY_READY, replyEvent);
     this.logger.log(
       `Published ${NATS_SUBJECT_DM_REPLY_READY} replyEventId=${replyEvent.eventId} ` +
+        `sourceEventId=${event.eventId}`,
+    );
+  }
+
+  private handoffLockKey(orgId: string, conversationId: string): string {
+    return `handoff:lock:${orgId}:${conversationId}`;
+  }
+
+  private resolveHandoffMessage(org: OrganizationDocument): string {
+    const custom = org.handoffMessage?.trim();
+    return custom || DEFAULT_HANDOFF_MESSAGE;
+  }
+
+  private async publishFixedReply(params: {
+    event: XWebhookReceivedEvent;
+    dmContext: NonNullable<ReturnType<typeof parseInboundDmFromWebhook>>;
+    org: OrganizationDocument;
+    resolvedConversationId: string;
+    recipientId: string;
+    inboundText: string;
+    replyText: string;
+  }): Promise<void> {
+    const {
+      event,
+      dmContext,
+      resolvedConversationId,
+      recipientId,
+      inboundText,
+      replyText,
+    } = params;
+    const now = new Date();
+    const messageBase = {
+      orgId: new Types.ObjectId(event.orgId),
+      connectionId: new Types.ObjectId(event.connectionId),
+      xUserId: event.xUserId,
+      xUsername: event.xUsername,
+      conversationId: resolvedConversationId,
+      recipientId,
+      processedAt: now,
+    };
+
+    await this.dmMessageModel.insertMany([
+      { ...messageBase, direction: 'inbound', text: inboundText },
+      {
+        ...messageBase,
+        direction: 'outbound',
+        text: replyText,
+        isKnownAnswer: false,
+      },
+    ]);
+
+    const replyEvent: XDmReplyReadyEvent = {
+      eventId: randomUUID(),
+      sourceEventId: event.eventId,
+      processedAt: now.toISOString(),
+      orgId: event.orgId,
+      connectionId: event.connectionId,
+      xUserId: event.xUserId,
+      xUsername: event.xUsername,
+      conversationId: resolvedConversationId,
+      recipientId,
+      inboundMessageId: dmContext.inboundMessageId,
+      inboundText,
+      replyText,
+      isKnownAnswer: false,
+    };
+
+    await this.natsJs.publishJson(NATS_SUBJECT_DM_REPLY_READY, replyEvent);
+    this.logger.log(
+      `Published ${NATS_SUBJECT_DM_REPLY_READY} handoff reply replyEventId=${replyEvent.eventId} ` +
         `sourceEventId=${event.eventId}`,
     );
   }

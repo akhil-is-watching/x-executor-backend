@@ -29,6 +29,15 @@ export class Organization {
   @Prop()
   draftLlmModel?: string;
 
+  @Prop({ default: false })
+  handoffEnabled!: boolean;
+
+  @Prop()
+  handoffConfig?: string;
+
+  @Prop()
+  handoffMessage?: string;
+
   @Prop()
   unknownReply?: string;
 }

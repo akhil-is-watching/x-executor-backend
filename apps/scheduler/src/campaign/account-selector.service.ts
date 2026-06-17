@@ -257,7 +257,11 @@ function shuffle<T>(items: T[]): T[] {
 
 function weightedRandomSelect<T>(items: T[], weights: number[]): T {
   const total = weights.reduce((sum, weight) => sum + weight, 0);
-  let threshold = randomInt(0, Math.max(total, 1));
+  if (total <= 0) {
+    return items[items.length - 1];
+  }
+
+  let threshold = Math.random() * total;
 
   for (let i = 0; i < items.length; i += 1) {
     threshold -= weights[i];

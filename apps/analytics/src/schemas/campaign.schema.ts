@@ -47,6 +47,9 @@ export class Campaign {
   @Prop({ min: 1 })
   accountsToUse?: number;
 
+  @Prop({ type: [Types.ObjectId], ref: 'XConnection', default: undefined })
+  connectionIds?: Types.ObjectId[];
+
   @Prop({ default: 0 })
   messagesSent!: number;
 

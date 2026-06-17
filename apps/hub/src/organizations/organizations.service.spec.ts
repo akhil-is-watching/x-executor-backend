@@ -245,4 +245,42 @@ describe('OrganizationsService', () => {
       service.testChat(orgId.toString(), { userMessage: 'Hi' }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('updateHandoff saves handoff fields', async () => {
+    orgModel.findByIdAndUpdate.mockResolvedValue({
+      _id: orgId,
+      name: 'Acme Corp',
+      createdBy: userId,
+      handoffEnabled: true,
+      handoffConfig: 'Notify @john for investments',
+      handoffMessage: 'Team notified.',
+    });
+
+    const result = await service.updateHandoff(orgId.toString(), {
+      handoffEnabled: true,
+      handoffConfig: 'Notify @john for investments',
+      handoffMessage: 'Team notified.',
+    });
+
+    expect(orgModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      orgId.toString(),
+      {
+        $set: {
+          handoffEnabled: true,
+          handoffConfig: 'Notify @john for investments',
+          handoffMessage: 'Team notified.',
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    expect(result.handoffEnabled).toBe(true);
+    expect(result.handoffConfig).toBe('Notify @john for investments');
+    expect(result.handoffMessage).toBe('Team notified.');
+  });
+
+  it('updateHandoff rejects enabled without config', async () => {
+    await expect(
+      service.updateHandoff(orgId.toString(), { handoffEnabled: true }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });

@@ -6,6 +6,7 @@ import {
   OPENROUTER_BASE_URL,
   DEFAULT_LLM_MODEL,
   parseLlmResponse,
+  parseHandoffClassification,
   resolveLlmModel,
 } from './llm.service';
 
@@ -86,6 +87,46 @@ describe('parseLlmResponse', () => {
     ).toEqual({
       replyText: 'Hey there! How can I help you today?',
       isKnownAnswer: true,
+    });
+  });
+});
+
+describe('parseHandoffClassification', () => {
+  it('parses handoff true with notify handle and category', () => {
+    expect(
+      parseHandoffClassification(
+        '{"handoff":true,"notifyHandle":"@john","category":"Investments"}',
+      ),
+    ).toEqual({
+      shouldHandoff: true,
+      notifyHandle: '@john',
+      category: 'Investments',
+    });
+  });
+
+  it('parses handoff false', () => {
+    expect(
+      parseHandoffClassification('{"handoff":false,"notifyHandle":null,"category":null}'),
+    ).toEqual({
+      shouldHandoff: false,
+      notifyHandle: null,
+      category: null,
+    });
+  });
+
+  it('returns no handoff for invalid JSON', () => {
+    expect(parseHandoffClassification('not json')).toEqual({
+      shouldHandoff: false,
+      notifyHandle: null,
+      category: null,
+    });
+  });
+
+  it('returns no handoff for empty output', () => {
+    expect(parseHandoffClassification('')).toEqual({
+      shouldHandoff: false,
+      notifyHandle: null,
+      category: null,
     });
   });
 });
@@ -346,5 +387,51 @@ describe('LlmService', () => {
         ],
       }),
     );
+  });
+
+  it('classifyHandoff returns parsed classification from JSON', async () => {
+    createMock.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content:
+              '{"handoff":true,"notifyHandle":"@alice","category":"Support"}',
+          },
+        },
+      ],
+    });
+
+    const result = await service.classifyHandoff({
+      handoffConfig: 'Notify @alice for support issues',
+      userMessage: 'I need to talk to a human',
+    });
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response_format: { type: 'json_object' },
+      }),
+    );
+    expect(result).toEqual({
+      shouldHandoff: true,
+      notifyHandle: '@alice',
+      category: 'Support',
+    });
+  });
+
+  it('classifyHandoff handles empty model output gracefully', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: '' } }],
+    });
+
+    const result = await service.classifyHandoff({
+      handoffConfig: 'Notify @alice for support',
+      userMessage: 'Hello',
+    });
+
+    expect(result).toEqual({
+      shouldHandoff: false,
+      notifyHandle: null,
+      category: null,
+    });
   });
 });

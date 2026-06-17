@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   ArrayMaxSize,
+  ArrayMinSize,
   Max,
   MaxLength,
   Min,
@@ -57,4 +58,17 @@ export class CreateCampaignDto {
   @IsInt()
   @Min(1)
   accountsToUse?: number;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012'],
+    description: 'Specific connected account IDs to send from',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  connectionIds?: string[];
 }

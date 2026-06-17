@@ -151,6 +151,70 @@ describe('CampaignsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('persists connectionIds when provided', async () => {
+      const connA = new Types.ObjectId();
+      const connB = new Types.ObjectId();
+      connectionModel.countDocuments.mockResolvedValue(2);
+      connectionModel.countDocuments
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(2);
+
+      campaignModel.create.mockResolvedValue({
+        ...campaignDoc,
+        status: 'pending',
+        messagesScheduled: 0,
+        connectionIds: [connA, connB],
+        accountsToUse: 2,
+      });
+
+      const result = await service.create(orgId.toString(), {
+        name: 'Selected accounts',
+        targetUsernames: ['alice'],
+        messageText: 'Hello',
+        connectionIds: [connA.toString(), connB.toString()],
+      });
+
+      expect(campaignModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionIds: [connA, connB],
+          accountsToUse: 2,
+        }),
+      );
+      expect(result.connectionIds).toEqual([connA.toString(), connB.toString()]);
+    });
+
+    it('rejects invalid connectionIds', async () => {
+      connectionModel.countDocuments.mockResolvedValue(2);
+
+      await expect(
+        service.create(orgId.toString(), {
+          name: 'Bad selection',
+          targetUsernames: ['alice'],
+          messageText: 'Hello',
+          connectionIds: ['not-a-valid-id'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects ineligible connectionIds', async () => {
+      connectionModel.countDocuments.mockResolvedValue(2);
+      connectionModel.countDocuments
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(1);
+
+      await expect(
+        service.create(orgId.toString(), {
+          name: 'Missing account',
+          targetUsernames: ['alice'],
+          messageText: 'Hello',
+          connectionIds: [
+            new Types.ObjectId().toString(),
+            new Types.ObjectId().toString(),
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('rejects create when no eligible connections exist', async () => {
       connectionModel.countDocuments.mockResolvedValue(0);
 

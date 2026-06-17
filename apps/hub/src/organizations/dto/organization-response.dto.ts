@@ -40,6 +40,19 @@ export class OrganizationDto {
   })
   draftLlmModel?: string;
 
+  @ApiProperty({ example: false })
+  handoffEnabled!: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Free-text rules for who to notify and when to hand off',
+  })
+  handoffConfig?: string;
+
+  @ApiPropertyOptional({
+    description: 'Fixed reply shown to users while a conversation is handed off',
+  })
+  handoffMessage?: string;
+
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   createdBy!: string;
 

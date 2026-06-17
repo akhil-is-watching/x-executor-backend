@@ -31,6 +31,12 @@ export class CreateCampaignResponseDto {
   @ApiPropertyOptional({ example: 2 })
   accountsToUse?: number;
 
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['507f1f77bcf86cd799439011'],
+  })
+  connectionIds?: string[];
+
   @ApiProperty({ example: 'Hello from our team!' })
   messageText!: string;
 
@@ -71,6 +77,9 @@ export class CampaignStatusResponseDto {
 
   @ApiPropertyOptional({ example: 2 })
   accountsToUse?: number;
+
+  @ApiPropertyOptional({ type: [String] })
+  connectionIds?: string[];
 
   @ApiProperty({ example: 100 })
   messagesScheduled!: number;

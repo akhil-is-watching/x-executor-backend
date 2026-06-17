@@ -4,6 +4,7 @@ export * from './shared.module';
 export * from './shared.service';
 export * from './events/x-webhook-received.event';
 export * from './events/x-dm-reply-ready.event';
+export * from './events/x-dm-handoff-notify.event';
 export * from './events/campaign-created.event';
 export * from './events/campaign-dm-ready.event';
 export * from './events/campaign-analytics.event';

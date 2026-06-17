@@ -122,4 +122,45 @@ describe('AccountSelectorService', () => {
       ]);
     });
   });
+
+  describe('planJobs', () => {
+    const accounts = [
+      { connectionId: 'aaaaaaaaaaaaaaaaaaaaaaaa', xUserId: 'user-a' },
+      { connectionId: 'bbbbbbbbbbbbbbbbbbbbbbbb', xUserId: 'user-b' },
+    ];
+
+    it('schedules a job for each target without throwing on fractional weights', async () => {
+      const result = await service.planJobs(
+        accounts,
+        ['alice', 'bob'],
+        {
+          campaignId: 'camp-1',
+          orgId: 'org-1',
+          messageText: 'Hello',
+        },
+      );
+
+      expect(result).toHaveLength(2);
+      expect(result.map((job) => job.recipientUsername).sort()).toEqual([
+        'alice',
+        'bob',
+      ]);
+      for (const job of result) {
+        expect(job.messageText).toBe('Hello');
+        expect(['aaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbb']).toContain(
+          job.connectionId,
+        );
+      }
+    });
+
+    it('throws when no accounts are available', async () => {
+      await expect(
+        service.planJobs([], ['alice'], {
+          campaignId: 'camp-1',
+          orgId: 'org-1',
+          messageText: 'Hello',
+        }),
+      ).rejects.toThrow('No eligible accounts with auth tokens available');
+    });
+  });
 });

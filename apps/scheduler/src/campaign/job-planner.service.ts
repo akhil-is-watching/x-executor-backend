@@ -72,19 +72,54 @@ export class JobPlannerService {
       xUserId: connection.xUserId,
     }));
 
-    const requestedCount = campaign.accountsToUse ?? connections.length;
-    const effectiveLimit = Math.min(requestedCount, connections.length);
+    let accounts: typeof allAccounts;
 
-    if (effectiveLimit < requestedCount) {
-      this.logger.warn(
-        `Campaign ${event.campaignId} requested ${requestedCount} account(s) but only ${connections.length} eligible; using ${effectiveLimit}`,
+    if (campaign.connectionIds?.length) {
+      const selectedIds = campaign.connectionIds.map((id) => id.toString());
+      const accountsById = new Map(
+        allAccounts.map((account) => [account.connectionId, account]),
+      );
+      accounts = selectedIds
+        .map((connectionId) => accountsById.get(connectionId))
+        .filter((account): account is (typeof allAccounts)[number] => !!account);
+
+      if (accounts.length === 0) {
+        await this.campaignModel.updateOne(
+          { _id: campaign._id },
+          {
+            $set: {
+              status: 'failed',
+              completedAt: new Date(),
+            },
+          },
+        );
+        this.logger.error(
+          `Campaign ${event.campaignId} failed: selected accounts unavailable`,
+        );
+        return;
+      }
+
+      if (accounts.length < selectedIds.length) {
+        this.logger.warn(
+          `Campaign ${event.campaignId} requested ${selectedIds.length} selected account(s) ` +
+            `but only ${accounts.length} remain eligible; using ${accounts.length}`,
+        );
+      }
+    } else {
+      const requestedCount = campaign.accountsToUse ?? connections.length;
+      const effectiveLimit = Math.min(requestedCount, connections.length);
+
+      if (effectiveLimit < requestedCount) {
+        this.logger.warn(
+          `Campaign ${event.campaignId} requested ${requestedCount} account(s) but only ${connections.length} eligible; using ${effectiveLimit}`,
+        );
+      }
+
+      accounts = await this.accountSelector.pickLeastLoadedAccounts(
+        allAccounts,
+        effectiveLimit,
       );
     }
-
-    const accounts = await this.accountSelector.pickLeastLoadedAccounts(
-      allAccounts,
-      effectiveLimit,
-    );
 
     if (accounts.length === 0) {
       await this.campaignModel.updateOne(
@@ -146,8 +181,11 @@ export class JobPlannerService {
 
     this.logger.log(
       `Planned ${plannedJobs.length} jobs for campaign ${event.campaignId} ` +
-        `using ${accounts.length} of ${connections.length} eligible account(s) ` +
-        `(requested=${requestedCount}); expectedEndAt=${expectedEndAt.toISOString()}`,
+        `using ${accounts.length} of ${connections.length} eligible account(s)` +
+        (campaign.connectionIds?.length
+          ? ` (explicit selection)`
+          : ` (requested=${campaign.accountsToUse ?? connections.length})`) +
+        `; expectedEndAt=${expectedEndAt.toISOString()}`,
     );
   }
 }

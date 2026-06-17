@@ -18,6 +18,8 @@ export const NATS_SUBJECT_WEBHOOK_RECEIVED = 'x.webhook.received' as const;
 
 export const NATS_SUBJECT_DM_REPLY_READY = 'x.dm.reply.ready' as const;
 
+export const NATS_SUBJECT_DM_HANDOFF_NOTIFY = 'x.dm.handoff.notify' as const;
+
 export const NATS_SUBJECT_CAMPAIGN_CREATED = 'x.campaign.created' as const;
 
 export const NATS_SUBJECT_CAMPAIGN_DM_READY = 'x.campaign.dm.ready' as const;
@@ -27,6 +29,8 @@ export const NATS_SUBJECT_CAMPAIGN_ANALYTICS = 'x.campaign.analytics' as const;
 export const NATS_DURABLE_PROCESSOR_WEBHOOK = 'processor-webhook' as const;
 
 export const NATS_DURABLE_SENDER_DM_REPLY = 'sender-dm-reply' as const;
+
+export const NATS_DURABLE_SENDER_HANDOFF = 'sender-handoff-notify' as const;
 
 export const NATS_DURABLE_SCHEDULER_CAMPAIGN = 'scheduler-campaign' as const;
 

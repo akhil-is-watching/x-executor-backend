@@ -10,6 +10,7 @@ import { LlmService, DEFAULT_LLM_MODEL } from '@app/llm';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { ChatTestDto } from './dto/chat-test.dto';
 import { UpdateOrganizationPromptDto } from './dto/update-organization-prompt.dto';
+import { UpdateOrgHandoffDto } from './dto/update-org-handoff.dto';
 import {
   Organization,
   OrganizationDocument,
@@ -216,6 +217,32 @@ export class OrganizationsService {
     return this.llm.listModels();
   }
 
+  async updateHandoff(orgId: string, dto: UpdateOrgHandoffDto) {
+    if (dto.handoffEnabled && !dto.handoffConfig?.trim()) {
+      throw new BadRequestException(
+        'handoffConfig is required when handoff is enabled',
+      );
+    }
+
+    const org = await this.orgModel.findByIdAndUpdate(
+      orgId,
+      {
+        $set: {
+          handoffEnabled: dto.handoffEnabled,
+          handoffConfig: dto.handoffConfig?.trim() || undefined,
+          handoffMessage: dto.handoffMessage?.trim() || undefined,
+        },
+      },
+      { returnDocument: 'after' },
+    );
+
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    return this.toOrgResponse(org);
+  }
+
   async listMembers(orgId: string) {
     const memberships = await this.membershipModel.find({
       orgId: new Types.ObjectId(orgId),
@@ -268,6 +295,9 @@ export class OrganizationsService {
       promptPublishedAt: org.promptPublishedAt,
       llmModel: this.resolvePublishedLlmModel(org),
       draftLlmModel: this.resolveDraftLlmModel(org),
+      handoffEnabled: org.handoffEnabled ?? false,
+      handoffConfig: org.handoffConfig,
+      handoffMessage: org.handoffMessage,
       createdBy: org.createdBy.toString(),
       createdAt: (org as OrganizationDocument & { createdAt?: Date }).createdAt,
     };

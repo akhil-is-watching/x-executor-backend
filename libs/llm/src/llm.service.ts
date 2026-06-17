@@ -14,6 +14,12 @@ export interface GenerateReplyResult {
   isKnownAnswer: boolean;
 }
 
+export interface HandoffClassificationResult {
+  shouldHandoff: boolean;
+  notifyHandle: string | null;
+  category: string | null;
+}
+
 export interface ParsedLlmResponse {
   replyText: string;
   isKnownAnswer: boolean;
@@ -111,6 +117,8 @@ export function parseLlmResponse(raw: string): ParsedLlmResponse | null {
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 export const DEFAULT_LLM_MODEL = 'google/gemini-3.5-flash';
+export const DEFAULT_HANDOFF_MESSAGE =
+  'A member of our team has been notified and will reply to you shortly.';
 
 export interface OpenRouterModelOption {
   id: string;
@@ -129,6 +137,42 @@ interface OpenRouterModelsResponse {
       output_modalities?: string[];
     };
   }>;
+}
+
+export function parseHandoffClassification(
+  raw: string,
+): HandoffClassificationResult {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { shouldHandoff: false, notifyHandle: null, category: null };
+  }
+
+  const directJson = parseJsonObject(trimmed);
+  const parsed =
+    directJson ??
+    (() => {
+      const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+      return jsonMatch ? parseJsonObject(jsonMatch[0]) : null;
+    })();
+
+  if (!parsed || typeof parsed.handoff !== 'boolean') {
+    return { shouldHandoff: false, notifyHandle: null, category: null };
+  }
+
+  const notifyHandle =
+    typeof parsed.notifyHandle === 'string' && parsed.notifyHandle.trim()
+      ? parsed.notifyHandle.trim()
+      : null;
+  const category =
+    typeof parsed.category === 'string' && parsed.category.trim()
+      ? parsed.category.trim()
+      : null;
+
+  return {
+    shouldHandoff: parsed.handoff,
+    notifyHandle: parsed.handoff ? notifyHandle : null,
+    category: parsed.handoff ? category : null,
+  };
 }
 
 export function resolveLlmModel(model: string, baseURL: string): string {
@@ -271,5 +315,45 @@ export class LlmService {
       replyText: parsed.replyText,
       isKnownAnswer: parsed.isKnownAnswer,
     };
+  }
+
+  async classifyHandoff(params: {
+    handoffConfig: string;
+    userMessage: string;
+    model?: string;
+  }): Promise<HandoffClassificationResult> {
+    const resolvedModel = this.resolveModel(params.model);
+    const systemContent = [
+      'You decide whether an inbound user message should be handed off to a human agent.',
+      'Use ONLY the HANDOFF RULES below. Do not invent notify targets.',
+      '',
+      'Always hand off when the user explicitly asks for a human, agent, support person, or real person.',
+      'Also hand off when the message matches a case described in HANDOFF RULES.',
+      '',
+      'RESPONSE FORMAT:',
+      'Respond with a single JSON object only. No markdown fences, no explanation.',
+      '{"handoff":true|false,"notifyHandle":"@handle"|null,"category":"Category name"|null}',
+      '',
+      'Rules for notifyHandle:',
+      '- When handoff is true, set notifyHandle to the @handle from HANDOFF RULES that best matches the message.',
+      '- Include the @ prefix when present in the rules.',
+      '- When handoff is false, set notifyHandle and category to null.',
+      '',
+      'HANDOFF RULES:',
+      params.handoffConfig.trim(),
+    ].join('\n');
+
+    const completion = await this.client.chat.completions.create({
+      model: resolvedModel,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: params.userMessage.trim() },
+      ],
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() ?? '';
+    return parseHandoffClassification(raw);
   }
 }

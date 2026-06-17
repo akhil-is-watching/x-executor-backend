@@ -16,6 +16,7 @@ import {
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationPromptDto } from './dto/update-organization-prompt.dto';
+import { UpdateOrgHandoffDto } from './dto/update-org-handoff.dto';
 import { ChatTestDto } from './dto/chat-test.dto';
 import { ChatTestResponseDto } from './dto/chat-test-response.dto';
 import {
@@ -133,5 +134,19 @@ export class OrganizationsController {
   @ApiResponse({ status: 403, description: 'Admin required' })
   listLlmModels() {
     return this.organizationsService.listLlmModels();
+  }
+
+  @Patch(':orgId/handoff')
+  @UseGuards(OrgMemberGuard, OrgAdminGuard)
+  @ApiOperation({ summary: 'Update bot-to-agent handoff settings (admin only)' })
+  @ApiResponse({ status: 200, type: OrganizationDto })
+  @ApiResponse({ status: 400, description: 'Invalid handoff configuration' })
+  @ApiResponse({ status: 403, description: 'Admin required' })
+  @ApiResponse({ status: 404, description: 'Organization not found' })
+  updateHandoff(
+    @Param('orgId') orgId: string,
+    @Body() dto: UpdateOrgHandoffDto,
+  ) {
+    return this.organizationsService.updateHandoff(orgId, dto);
   }
 }

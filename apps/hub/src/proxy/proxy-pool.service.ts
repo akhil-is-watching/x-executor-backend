@@ -19,8 +19,17 @@ import {
 } from '../schemas/x-connection.schema';
 
 const PROXY_RESERVE_PREFIX = 'proxy:reserve:';
+const PROXY_PENDING_PREFIX = 'proxy:pending:';
 const PROXY_RESERVE_TTL_SECONDS = 600;
+const PROXY_PENDING_TTL_SECONDS = PROXY_COOLDOWN_DAYS * 24 * 60 * 60;
 const COOLDOWN_MS = PROXY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+
+type ProxyReservation = {
+  proxyId: string;
+  proxyAddress?: string;
+  proxyUrlEnc?: string;
+  reuse: boolean;
+};
 
 @Injectable()
 export class ProxyPoolService {
@@ -51,25 +60,17 @@ export class ProxyPoolService {
     xUserId?: string,
   ): Promise<void> {
     if (xUserId) {
-      const existing = await this.proxyAssignmentModel.findOne({ xUserId });
-      if (existing && existing.status === 'cooldown' && existing.releasedAt) {
-        const age = Date.now() - existing.releasedAt.getTime();
-        if (age < COOLDOWN_MS) {
-          await this.redis.setex(
-            `${PROXY_RESERVE_PREFIX}${oauthToken}`,
-            PROXY_RESERVE_TTL_SECONDS,
-            JSON.stringify({
-              proxyId: existing.proxyId,
-              proxyAddress: existing.proxyAddress,
-              proxyUrlEnc: existing.proxyUrlEnc,
-              reuse: true,
-            }),
-          );
-          this.logger.log(
-            `Proxy reserved (reuse within cooldown) for oauthToken=${oauthToken} xUserId=${xUserId}`,
-          );
-          return;
-        }
+      const reuse = await this.findCooldownReuseReservation(xUserId);
+      if (reuse) {
+        await this.redis.setex(
+          `${PROXY_RESERVE_PREFIX}${oauthToken}`,
+          PROXY_RESERVE_TTL_SECONDS,
+          JSON.stringify(reuse),
+        );
+        this.logger.log(
+          `Proxy reserved (reuse within cooldown) for oauthToken=${oauthToken} xUserId=${xUserId}`,
+        );
+        return;
       }
     }
 
@@ -86,56 +87,88 @@ export class ProxyPoolService {
 
   /**
    * Called at OAuth callback after XConnection is upserted.
-   * Reads the Redis reservation, upserts ProxyAssignment, and writes the
-   * encrypted proxyUrl to XConnection.
+   * Moves the OAuth reservation into a pending key until auth token and
+   * XChat PIN are both configured.
    */
-  async assignFromReservation(
-    orgId: string,
+  async deferAssignmentFromReservation(
     xUserId: string,
     oauthToken: string,
   ): Promise<void> {
-    const raw = await this.redis.get(
-      `${PROXY_RESERVE_PREFIX}${oauthToken}`,
-    );
+    const reserveKey = `${PROXY_RESERVE_PREFIX}${oauthToken}`;
+    const raw = await this.redis.get(reserveKey);
     if (!raw) {
       this.logger.warn(
-        `No proxy reservation found for oauthToken=${oauthToken} xUserId=${xUserId}; skipping assignment`,
+        `No proxy reservation found for oauthToken=${oauthToken} xUserId=${xUserId}; skipping defer`,
       );
       return;
     }
 
-    await this.redis.del(`${PROXY_RESERVE_PREFIX}${oauthToken}`);
+    await this.redis.del(reserveKey);
+    await this.redis.setex(
+      `${PROXY_PENDING_PREFIX}${xUserId}`,
+      PROXY_PENDING_TTL_SECONDS,
+      raw,
+    );
+    this.logger.log(`Proxy assignment deferred for xUserId=${xUserId}`);
+  }
 
-    const reservation = JSON.parse(raw) as {
-      proxyId: string;
-      proxyAddress?: string;
-      proxyUrlEnc?: string;
-      reuse: boolean;
-    };
+  /**
+   * Assigns a proxy once auth token and XChat PIN are both set on the
+   * connection.
+   */
+  async assignForConnectionIfReady(
+    orgId: string,
+    connection: Pick<
+      XConnectionDocument,
+      'xUserId' | 'authTokenEnc' | 'xchatPinEnc' | 'proxyUrlEnc'
+    >,
+  ): Promise<void> {
+    if (
+      !connection.authTokenEnc ||
+      !connection.xchatPinEnc ||
+      connection.proxyUrlEnc
+    ) {
+      return;
+    }
 
-    let proxyId: string;
-    let proxyAddress: string;
-    let proxyUrlEnc: string;
+    await this.assignForConnection(orgId, connection.xUserId);
+  }
 
-    if (reservation.reuse && reservation.proxyAddress && reservation.proxyUrlEnc) {
-      proxyId = reservation.proxyId;
-      proxyAddress = reservation.proxyAddress;
-      proxyUrlEnc = reservation.proxyUrlEnc;
-      this.logger.log(
-        `Reusing proxy proxyId=${proxyId} for xUserId=${xUserId} (within 7-day cooldown)`,
-      );
+  /**
+   * Reads a pending OAuth reservation (or cooldown reuse / free pool) and
+   * writes the encrypted proxyUrl to XConnection.
+   */
+  async assignForConnection(orgId: string, xUserId: string): Promise<void> {
+    const existingConnection = await this.connectionModel.findOne({
+      xUserId,
+      orgId: new Types.ObjectId(orgId),
+      revokedAt: null,
+    });
+    if (existingConnection?.proxyUrlEnc) {
+      return;
+    }
+
+    let reservation: ProxyReservation | null =
+      await this.findCooldownReuseReservation(xUserId);
+
+    if (reservation) {
+      await this.redis.del(`${PROXY_PENDING_PREFIX}${xUserId}`);
     } else {
-      const allProxies = await this.webshare.listProxies();
-      const proxy = allProxies.find((p) => p.id === reservation.proxyId);
-      if (!proxy) {
-        this.logger.error(
-          `Reserved proxy proxyId=${reservation.proxyId} not found in Webshare; cannot assign`,
-        );
-        return;
+      const raw = await this.redis.get(`${PROXY_PENDING_PREFIX}${xUserId}`);
+      if (raw) {
+        await this.redis.del(`${PROXY_PENDING_PREFIX}${xUserId}`);
+        reservation = JSON.parse(raw) as ProxyReservation;
       }
-      proxyId = proxy.id;
-      proxyAddress = proxy.proxy_address;
-      proxyUrlEnc = this.tokenCrypto.encrypt(this.webshare.buildProxyUrl(proxy));
+    }
+
+    if (!reservation) {
+      reservation = { proxyId: await this.pickFreeProxyId(), reuse: false };
+    }
+
+    const { proxyId, proxyAddress, proxyUrlEnc } =
+      await this.resolveProxyCredentials(reservation, xUserId);
+    if (!proxyUrlEnc) {
+      return;
     }
 
     await this.proxyAssignmentModel.findOneAndUpdate(
@@ -217,6 +250,74 @@ export class ProxyPoolService {
         );
       }
     }
+  }
+
+  private async findCooldownReuseReservation(
+    xUserId: string,
+  ): Promise<ProxyReservation | null> {
+    const existing = await this.proxyAssignmentModel.findOne({ xUserId });
+    if (
+      !existing ||
+      existing.status !== 'cooldown' ||
+      !existing.releasedAt
+    ) {
+      return null;
+    }
+
+    const age = Date.now() - existing.releasedAt.getTime();
+    if (age >= COOLDOWN_MS) {
+      return null;
+    }
+
+    return {
+      proxyId: existing.proxyId,
+      proxyAddress: existing.proxyAddress,
+      proxyUrlEnc: existing.proxyUrlEnc,
+      reuse: true,
+    };
+  }
+
+  private async resolveProxyCredentials(
+    reservation: ProxyReservation,
+    xUserId: string,
+  ): Promise<{
+    proxyId: string;
+    proxyAddress: string;
+    proxyUrlEnc: string | null;
+  }> {
+    if (
+      reservation.reuse &&
+      reservation.proxyAddress &&
+      reservation.proxyUrlEnc
+    ) {
+      this.logger.log(
+        `Reusing proxy proxyId=${reservation.proxyId} for xUserId=${xUserId} (within 7-day cooldown)`,
+      );
+      return {
+        proxyId: reservation.proxyId,
+        proxyAddress: reservation.proxyAddress,
+        proxyUrlEnc: reservation.proxyUrlEnc,
+      };
+    }
+
+    const allProxies = await this.webshare.listProxies();
+    const proxy = allProxies.find((p) => p.id === reservation.proxyId);
+    if (!proxy) {
+      this.logger.error(
+        `Reserved proxy proxyId=${reservation.proxyId} not found in Webshare; cannot assign`,
+      );
+      return {
+        proxyId: reservation.proxyId,
+        proxyAddress: reservation.proxyAddress ?? '',
+        proxyUrlEnc: null,
+      };
+    }
+
+    return {
+      proxyId: proxy.id,
+      proxyAddress: proxy.proxy_address,
+      proxyUrlEnc: this.tokenCrypto.encrypt(this.webshare.buildProxyUrl(proxy)),
+    };
   }
 
   private async pickFreeProxyId(): Promise<string> {

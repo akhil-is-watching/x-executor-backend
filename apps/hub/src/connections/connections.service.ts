@@ -71,6 +71,7 @@ export class ConnectionsService {
     }
     // Invalidate L3 cache so processor re-unlocks immediately with new PIN
     await this.redis.del(`${XCHAT_SECRET_REDIS_PREFIX}${connection.xUserId}`);
+    await this.proxyPool.assignForConnectionIfReady(orgId, connection);
     return { updated: true, hasXchatPin: true };
   }
 
@@ -91,6 +92,7 @@ export class ConnectionsService {
     if (!connection) {
       throw new NotFoundException('Connection not found');
     }
+    await this.proxyPool.assignForConnectionIfReady(orgId, connection);
     return { updated: true, hasAuthToken: true };
   }
 

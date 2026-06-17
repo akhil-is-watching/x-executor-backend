@@ -7,6 +7,7 @@ import { XConnection } from '../schemas/x-connection.schema';
 import { TokenCryptoService } from '../crypto/token-crypto.service';
 import { XApiService } from '../oauth/x-api.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { ProxyPoolService } from '../proxy/proxy-pool.service';
 import {
   ConnectionsService,
   XCHAT_SECRET_REDIS_PREFIX,
@@ -54,6 +55,11 @@ describe('ConnectionsService', () => {
     del: jest.fn().mockResolvedValue(undefined),
   };
 
+  const proxyPool = {
+    assignForConnectionIfReady: jest.fn().mockResolvedValue(undefined),
+    releaseForConnection: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -80,6 +86,10 @@ describe('ConnectionsService', () => {
           provide: RedisService,
           useValue: redis,
         },
+        {
+          provide: ProxyPoolService,
+          useValue: proxyPool,
+        },
       ],
     }).compile();
 
@@ -99,6 +109,7 @@ describe('ConnectionsService', () => {
         'secret',
       );
       expect(redis.del).toHaveBeenCalledWith(`${XCHAT_SECRET_REDIS_PREFIX}${xUserId}`);
+      expect(proxyPool.releaseForConnection).toHaveBeenCalledWith(xUserId);
       expect(connectionModel.updateOne).toHaveBeenCalledWith(
         { _id: connectionId },
         {
@@ -108,6 +119,7 @@ describe('ConnectionsService', () => {
             accessTokenSecretEnc: 1,
             authTokenEnc: 1,
             xchatPinEnc: 1,
+            proxyUrlEnc: 1,
             refreshTokenEnc: 1,
             tokenExpiresAt: 1,
           },

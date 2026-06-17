@@ -137,8 +137,7 @@ export class OAuthService {
       throw new InternalServerErrorException('Failed to save X connection');
     }
 
-    await this.proxyPool.assignFromReservation(
-      invite.orgId.toString(),
+    await this.proxyPool.deferAssignmentFromReservation(
       profile.id,
       query.oauth_token,
     );

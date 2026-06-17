@@ -1,0 +1,53 @@
+name: development-sender-ci-cd
+on:
+
+   workflow_dispatch:
+  
+jobs:
+  dockerize:
+    name: Dockerize and Deploy to Sender
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASS }}
+
+      - name: Install Git
+        run: sudo apt-get update && sudo apt-get install git -y
+
+      - name: Set up Git Commit Hash as ENV VAR
+        run: echo "TAG=$(git log -1 --pretty=%h)" >> $GITHUB_ENV
+
+      - name: Build Docker Image
+        run: |
+          echo $TAG
+          docker build --no-cache -t plenafinance/${{ vars.APP_NAME }}-sender:latest -t plenafinance/${{ vars.APP_NAME }}-sender:$TAG --build-arg VALUE_HASH=$TAG -f Dockerfile.sender .
+          
+      - name: Push Docker Image to Docker Hub
+        run: |
+          docker push plenafinance/${{ vars.APP_NAME }}-sender:$TAG
+          docker push plenafinance/${{ vars.APP_NAME }}-sender:latest
+
+      
+      - name: Install Argo CD CLI
+        run: |
+          curl -sLO https://github.com/argoproj/argo-cd/releases/download/v2.2.3/argocd-linux-amd64
+          chmod +x argocd-linux-amd64
+          sudo mv argocd-linux-amd64 /usr/local/bin/argocd
+
+      - name: Login to Argo CD
+        run: |
+          argocd login ${{ vars.ARGOCD_SERVER }} --username ${{ secrets.ARGOCD_USERNAME }} --password ${{ secrets.ARGOCD_PASSWORD }} --insecure
+
+      - name: Update Helm Chart with Latest Tag
+        run: |
+          argocd app actions run ${{ vars.APP_NAME }}-sender restart --kind Deployment

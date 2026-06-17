@@ -70,7 +70,7 @@ flowchart LR
 
 | Actor | What they do in the UI |
 |-------|------------------------|
-| **Org owner/admin** | Register/login, create org, invites, connections, per-connection **auth token** + **XChat PIN**, **system prompt** + unknown reply, **create DM campaigns** |
+| **Org owner/admin** | Register/login, create org, invites, connections, per-connection **auth token** + **XChat PIN**, **system prompt**, **create DM campaigns** |
 | **Org member** | View connections and **campaign progress** (no invites, prompts, revoke, or campaign create) |
 | **X account holder** (no Hub login) | Open invite link → authorize X; Hub stores tokens and subscribes to the shared webhook |
 
@@ -314,10 +314,10 @@ The processor skips automated replies when `systemPrompt` is empty (`apps/proces
 
 | Method | Path | Body |
 |--------|------|------|
-| `GET` | `/orgs/:orgId` | — returns `systemPrompt`, `unknownReply` |
-| `PATCH` | `/orgs/:orgId/prompt` | `{ "systemPrompt"?, "unknownReply"? }` |
+| `GET` | `/orgs/:orgId` | — returns `systemPrompt` |
+| `PATCH` | `/orgs/:orgId/prompt` | `{ "systemPrompt"? }` |
 
-Limits (Hub validation): `systemPrompt` max 32 000 chars; `unknownReply` max 1 000 chars.
+Limits (Hub validation): `systemPrompt` max 32 000 chars. Include out-of-scope handling inside the system prompt (e.g. “If you cannot answer, direct users to support@…”).
 
 **Reference UI:**
 
@@ -327,8 +327,7 @@ Limits (Hub validation): `systemPrompt` max 32 000 chars; `unknownReply` max 1
 
 ```ts
 await orgsApi.updatePrompt(token, orgId, {
-  systemPrompt: 'You are support for Acme. Only answer from: ...',
-  unknownReply: 'Please email support@acme.com',
+  systemPrompt: 'You are support for Acme. Only answer from: ... If unknown, ask them to email support@acme.com.',
 });
 ```
 
@@ -603,7 +602,7 @@ Base: `{HUB_ORIGIN}/xbot/v1/api/hub`
 | `POST` | `/orgs` | JWT | Create org; creator = `owner` |
 | `GET` | `/orgs` | JWT | List orgs with `role` |
 | `GET` | `/orgs/:orgId` | JWT + member | Includes prompts |
-| `PATCH` | `/orgs/:orgId/prompt` | JWT + admin | Update `systemPrompt` / `unknownReply` |
+| `PATCH` | `/orgs/:orgId/prompt` | JWT + admin | Update `systemPrompt` |
 | `GET` | `/orgs/:orgId/members` | JWT + admin | Members |
 | `POST` | `/orgs/:orgId/invites` | JWT + admin | Create invite |
 | `GET` | `/orgs/:orgId/invites` | JWT + admin | List invites |

@@ -71,7 +71,6 @@ describe('DmPipelineService', () => {
     orgModel.findById.mockResolvedValue({
       _id: orgId,
       systemPrompt: 'We only sell blue widgets.',
-      unknownReply: "I don't know",
     });
     mockGetxapi.fetchInboundConversation.mockResolvedValue({
       conversationId: '3012852462-1345154135381794816',
@@ -105,10 +104,7 @@ describe('DmPipelineService', () => {
               if (name === 'TOKEN_ENCRYPTION_KEY') return key;
               throw new Error(name);
             },
-            get: (name: string) => {
-              if (name === 'DEFAULT_UNKNOWN_REPLY') return "I don't know";
-              return undefined;
-            },
+            get: () => undefined,
           },
         },
         { provide: getModelToken(XConnection.name), useValue: connectionModel },
@@ -129,7 +125,6 @@ describe('DmPipelineService', () => {
     expect(mockGetxapi.fetchInboundConversation).not.toHaveBeenCalled();
     expect(mockLlm.generateReply).toHaveBeenCalledWith({
       systemPrompt: 'We only sell blue widgets.',
-      unknownReply: "I don't know",
       userMessage: 'hello',
     });
     expect(mockNats.publishJson).toHaveBeenCalledWith(

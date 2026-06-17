@@ -4,7 +4,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { LlmService } from '@app/llm';
@@ -32,7 +31,6 @@ export class OrganizationsService {
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
     private readonly llm: LlmService,
-    private readonly config: ConfigService,
   ) {}
 
   async create(userId: string, dto: CreateOrganizationDto) {
@@ -99,9 +97,6 @@ export class OrganizationsService {
           ...(dto.systemPrompt !== undefined
             ? { systemPrompt: dto.systemPrompt }
             : {}),
-          ...(dto.unknownReply !== undefined
-            ? { unknownReply: dto.unknownReply }
-            : {}),
         },
       },
       { returnDocument: 'after' },
@@ -125,15 +120,8 @@ export class OrganizationsService {
       );
     }
 
-    const unknownReply =
-      dto.unknownReply?.trim() ??
-      org.unknownReply?.trim() ??
-      this.config.get<string>('DEFAULT_UNKNOWN_REPLY') ??
-      "I don't know";
-
     const result = await this.llm.generateReply({
       systemPrompt,
-      unknownReply,
       userMessage: dto.userMessage.trim(),
     });
 
@@ -166,7 +154,6 @@ export class OrganizationsService {
       name: org.name,
       slug: org.slug,
       systemPrompt: org.systemPrompt,
-      unknownReply: org.unknownReply,
       createdBy: org.createdBy.toString(),
       createdAt: (org as OrganizationDocument & { createdAt?: Date }).createdAt,
     };

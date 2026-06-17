@@ -6,7 +6,7 @@ export class ChatTestResponseDto {
 
   @ApiProperty({
     description:
-      'False when the model returned the unknown-reply fallback (out of scope).',
+      'False when the model determined the system prompt does not cover the question.',
   })
   isKnownAnswer!: boolean;
 }

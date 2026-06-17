@@ -1,11 +1,15 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { LlmService } from '@app/llm';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
+import { ChatTestDto } from './dto/chat-test.dto';
 import { UpdateOrganizationPromptDto } from './dto/update-organization-prompt.dto';
 import {
   Organization,
@@ -27,6 +31,8 @@ export class OrganizationsService {
     private readonly membershipModel: Model<OrganizationMembershipDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    private readonly llm: LlmService,
+    private readonly config: ConfigService,
   ) {}
 
   async create(userId: string, dto: CreateOrganizationDto) {
@@ -104,6 +110,37 @@ export class OrganizationsService {
       throw new NotFoundException('Organization not found');
     }
     return this.toOrgResponse(org);
+  }
+
+  async testChat(orgId: string, dto: ChatTestDto) {
+    const org = await this.orgModel.findById(orgId);
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const systemPrompt = dto.systemPrompt?.trim() ?? org.systemPrompt?.trim();
+    if (!systemPrompt) {
+      throw new BadRequestException(
+        'systemPrompt is required when the organization has no saved system prompt',
+      );
+    }
+
+    const unknownReply =
+      dto.unknownReply?.trim() ??
+      org.unknownReply?.trim() ??
+      this.config.get<string>('DEFAULT_UNKNOWN_REPLY') ??
+      "I don't know";
+
+    const result = await this.llm.generateReply({
+      systemPrompt,
+      unknownReply,
+      userMessage: dto.userMessage.trim(),
+    });
+
+    return {
+      reply: result.replyText,
+      isKnownAnswer: result.isKnownAnswer,
+    };
   }
 
   async listMembers(orgId: string) {

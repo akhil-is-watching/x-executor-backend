@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { RedisModule } from '@app/redis';
+import { LlmModule } from '@app/llm';
 import { validateEnv } from './config/validate-env';
 import { HubController } from './hub.controller';
 import { AuthModule } from './auth/auth.module';
@@ -29,6 +30,7 @@ import { ChatsModule } from './chats/chats.module';
     }),
     RedisModule,
     NatsJsModule,
+    LlmModule,
     CryptoModule,
     AuthModule,
     OrganizationsModule,

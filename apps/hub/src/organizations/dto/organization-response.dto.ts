@@ -13,9 +13,6 @@ export class OrganizationDto {
   @ApiPropertyOptional()
   systemPrompt?: string;
 
-  @ApiPropertyOptional()
-  unknownReply?: string;
-
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   createdBy!: string;
 

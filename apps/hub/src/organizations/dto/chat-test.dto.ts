@@ -20,14 +20,4 @@ export class ChatTestDto {
   @IsString()
   @MaxLength(32_000)
   systemPrompt?: string;
-
-  @ApiPropertyOptional({
-    maxLength: 1000,
-    description:
-      'Fallback when the LLM cannot answer. If omitted, uses org unknownReply or default.',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
-  unknownReply?: string;
 }

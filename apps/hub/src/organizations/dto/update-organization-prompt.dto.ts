@@ -10,13 +10,4 @@ export class UpdateOrganizationPromptDto {
   @IsString()
   @MaxLength(32_000)
   systemPrompt?: string;
-
-  @ApiPropertyOptional({
-    maxLength: 1_000,
-    description: 'Fallback reply when the LLM cannot answer from the prompt',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(1_000)
-  unknownReply?: string;
 }

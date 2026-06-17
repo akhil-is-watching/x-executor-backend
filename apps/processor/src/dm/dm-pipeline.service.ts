@@ -263,14 +263,8 @@ export class DmPipelineService {
 
     await this.trackCampaignReply(event, recipientId);
 
-    const unknownReply =
-      org.unknownReply?.trim() ||
-      this.config.get<string>('DEFAULT_UNKNOWN_REPLY') ||
-      "I don't know";
-
     const llmResult = await this.llm.generateReply({
       systemPrompt: org.systemPrompt.trim(),
-      unknownReply,
       userMessage: inboundText,
       conversationHistory,
     });

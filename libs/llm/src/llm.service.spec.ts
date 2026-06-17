@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import OpenAI from 'openai';
-import { extractReplyText, LlmService } from './llm.service';
+import { LlmService, parseLlmResponse } from './llm.service';
 
 const createMock = jest.fn();
 const OpenAIMock = OpenAI as jest.MockedClass<typeof OpenAI>;
@@ -17,42 +17,70 @@ jest.mock('openai', () => ({
   })),
 }));
 
-describe('extractReplyText', () => {
-  const unknownReply = "I don't know";
-
-  it('parses reply from JSON', () => {
+describe('parseLlmResponse', () => {
+  it('parses reply and knownAnswer from JSON', () => {
     expect(
-      extractReplyText('{"reply":"We ship on Fridays."}', unknownReply),
-    ).toBe('We ship on Fridays.');
+      parseLlmResponse(
+        '{"reply":"We ship on Fridays.","knownAnswer":true}',
+      ),
+    ).toEqual({
+      replyText: 'We ship on Fridays.',
+      isKnownAnswer: true,
+    });
+  });
+
+  it('defaults knownAnswer to true when omitted from JSON', () => {
+    expect(parseLlmResponse('{"reply":"We ship on Fridays."}')).toEqual({
+      replyText: 'We ship on Fridays.',
+      isKnownAnswer: true,
+    });
   });
 
   it('extracts reply from JSON embedded in noise', () => {
     expect(
-      extractReplyText(
-        'Here is the response: {"reply":"We ship on Fridays."}',
-        unknownReply,
+      parseLlmResponse(
+        'Here is the response: {"reply":"We ship on Fridays.","knownAnswer":true}',
       ),
-    ).toBe('We ship on Fridays.');
+    ).toEqual({
+      replyText: 'We ship on Fridays.',
+      isKnownAnswer: true,
+    });
+  });
+
+  it('parses knownAnswer false from JSON', () => {
+    expect(
+      parseLlmResponse(
+        '{"reply":"Please contact support@acme.com","knownAnswer":false}',
+      ),
+    ).toEqual({
+      replyText: 'Please contact support@acme.com',
+      isKnownAnswer: false,
+    });
   });
 
   it('strips redacted_thinking blocks', () => {
     expect(
-      extractReplyText(
+      parseLlmResponse(
         '<think>\nSome reasoning here.\n</think>\n\nActual reply',
-        unknownReply,
       ),
-    ).toBe('Actual reply');
+    ).toEqual({
+      replyText: 'Actual reply',
+      isKnownAnswer: true,
+    });
   });
 
-  it('returns unknownReply for empty output', () => {
-    expect(extractReplyText('', unknownReply)).toBe(unknownReply);
-    expect(extractReplyText('   ', unknownReply)).toBe(unknownReply);
+  it('returns null for empty output', () => {
+    expect(parseLlmResponse('')).toBeNull();
+    expect(parseLlmResponse('   ')).toBeNull();
   });
 
   it('returns plain text directly when model skips JSON format', () => {
     expect(
-      extractReplyText('Hey there! How can I help you today?', unknownReply),
-    ).toBe('Hey there! How can I help you today?');
+      parseLlmResponse('Hey there! How can I help you today?'),
+    ).toEqual({
+      replyText: 'Hey there! How can I help you today?',
+      isKnownAnswer: true,
+    });
   });
 });
 
@@ -119,13 +147,16 @@ describe('LlmService', () => {
   it('returns known answer from JSON reply', async () => {
     createMock.mockResolvedValue({
       choices: [
-        { message: { content: '{"reply":"We ship on Fridays."}' } },
+        {
+          message: {
+            content: '{"reply":"We ship on Fridays.","knownAnswer":true}',
+          },
+        },
       ],
     });
 
     const result = await service.generateReply({
       systemPrompt: 'Shipping is on Fridays.',
-      unknownReply: "I don't know",
       userMessage: 'When do you ship?',
     });
 
@@ -138,19 +169,25 @@ describe('LlmService', () => {
     expect(result.replyText).toBe('We ship on Fridays.');
   });
 
-  it('uses unknown reply when model returns fallback in JSON', async () => {
+  it('returns unknown answer when model sets knownAnswer false', async () => {
     createMock.mockResolvedValue({
-      choices: [{ message: { content: '{"reply":"I don\'t know"}' } }],
+      choices: [
+        {
+          message: {
+            content:
+              '{"reply":"Please contact support@acme.com","knownAnswer":false}',
+          },
+        },
+      ],
     });
 
     const result = await service.generateReply({
       systemPrompt: 'Shipping is on Fridays.',
-      unknownReply: "I don't know",
       userMessage: 'What is your refund policy?',
     });
 
     expect(result.isKnownAnswer).toBe(false);
-    expect(result.replyText).toBe("I don't know");
+    expect(result.replyText).toBe('Please contact support@acme.com');
   });
 
   it('strips thinking blocks when JSON mode is ignored by proxy', async () => {
@@ -167,7 +204,6 @@ describe('LlmService', () => {
 
     const result = await service.generateReply({
       systemPrompt: 'Shipping is on Fridays.',
-      unknownReply: "I don't know",
       userMessage: 'When do you ship?',
     });
 
@@ -182,7 +218,6 @@ describe('LlmService', () => {
 
     const result = await service.generateReply({
       systemPrompt: 'You are a support bot.',
-      unknownReply: "I don't know",
       userMessage: 'Hey',
     });
 
@@ -190,30 +225,57 @@ describe('LlmService', () => {
     expect(result.replyText).toBe('Hey there! How can I help you?');
   });
 
+  it('returns empty reply and false knownAnswer for empty model output', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: '' } }],
+    });
+
+    const result = await service.generateReply({
+      systemPrompt: 'You are a support bot.',
+      userMessage: 'Hi',
+    });
+
+    expect(result.isKnownAnswer).toBe(false);
+    expect(result.replyText).toBe('');
+  });
+
   it('includes GREETING RULE in system content sent to OpenAI', async () => {
     createMock.mockResolvedValue({
-      choices: [{ message: { content: '{"reply":"Hey! How can I help?"}' } }],
+      choices: [
+        {
+          message: {
+            content: '{"reply":"Hey! How can I help?","knownAnswer":true}',
+          },
+        },
+      ],
     });
 
     await service.generateReply({
       systemPrompt: 'You are a support bot.',
-      unknownReply: "I don't know",
       userMessage: 'Hey',
     });
 
-    const calledWith = createMock.mock.calls[0][0] as { messages: Array<{ role: string; content: string }> };
+    const calledWith = createMock.mock.calls[0][0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
     const systemMsg = calledWith.messages[0].content;
     expect(systemMsg).toContain('GREETING RULE');
+    expect(systemMsg).toContain('knownAnswer');
   });
 
   it('includes conversation history in OpenAI messages', async () => {
     createMock.mockResolvedValue({
-      choices: [{ message: { content: '{"reply":"We ship on Fridays."}' } }],
+      choices: [
+        {
+          message: {
+            content: '{"reply":"We ship on Fridays.","knownAnswer":true}',
+          },
+        },
+      ],
     });
 
     await service.generateReply({
       systemPrompt: 'Shipping is on Fridays.',
-      unknownReply: "I don't know",
       userMessage: 'When do you ship?',
       conversationHistory: [
         { role: 'user', content: 'Hi there' },

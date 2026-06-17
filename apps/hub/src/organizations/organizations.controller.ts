@@ -23,6 +23,7 @@ import {
   OrganizationDto,
   OrganizationWithRoleDto,
 } from './dto/organization-response.dto';
+import { LlmModelOptionDto } from './dto/llm-model-option.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { OrgMemberGuard } from '../guards/org-member.guard';
 import { OrgAdminGuard } from '../guards/org-admin.guard';
@@ -123,5 +124,14 @@ export class OrganizationsController {
   @ApiResponse({ status: 404, description: 'Organization not found' })
   testChat(@Param('orgId') orgId: string, @Body() dto: ChatTestDto) {
     return this.organizationsService.testChat(orgId, dto);
+  }
+
+  @Get(':orgId/llm/models')
+  @UseGuards(OrgMemberGuard, OrgAdminGuard)
+  @ApiOperation({ summary: 'List available OpenRouter LLM models (admin only)' })
+  @ApiResponse({ status: 200, type: [LlmModelOptionDto] })
+  @ApiResponse({ status: 403, description: 'Admin required' })
+  listLlmModels() {
+    return this.organizationsService.listLlmModels();
   }
 }

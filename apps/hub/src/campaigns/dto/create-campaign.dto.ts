@@ -47,4 +47,14 @@ export class CreateCampaignDto {
   @Min(1)
   @Max(30)
   dmsPerHour?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    example: 2,
+    description: 'Number of connected accounts to use for sending',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  accountsToUse?: number;
 }

@@ -5,6 +5,7 @@ import OpenAI from 'openai';
 export interface GenerateReplyParams {
   systemPrompt: string;
   userMessage: string;
+  model?: string;
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
@@ -109,6 +110,26 @@ export function parseLlmResponse(raw: string): ParsedLlmResponse | null {
 }
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+export const DEFAULT_LLM_MODEL = 'google/gemini-3.5-flash';
+
+export interface OpenRouterModelOption {
+  id: string;
+  name: string;
+  description?: string;
+  contextLength?: number;
+}
+
+interface OpenRouterModelsResponse {
+  data?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    context_length?: number;
+    architecture?: {
+      output_modalities?: string[];
+    };
+  }>;
+}
 
 export function resolveLlmModel(model: string, baseURL: string): string {
   if (!baseURL.startsWith('https://openrouter.ai')) {
@@ -123,16 +144,20 @@ export function resolveLlmModel(model: string, baseURL: string): string {
 @Injectable()
 export class LlmService {
   private readonly client: OpenAI;
-  private readonly model: string;
+  private readonly defaultModel: string;
+  private readonly baseURL: string;
+  private modelsCache: { fetchedAt: number; models: OpenRouterModelOption[] } | null =
+    null;
 
   constructor(private readonly config: ConfigService) {
-    const baseURL =
+    this.baseURL =
       this.config.get<string>('OPENAI_BASE_URL') ?? OPENROUTER_BASE_URL;
-    const configuredModel = this.config.get<string>('OPENAI_MODEL') ?? 'gpt-4o-mini';
+    const configuredModel =
+      this.config.get<string>('OPENAI_MODEL') ?? DEFAULT_LLM_MODEL;
     this.client = new OpenAI({
       apiKey: this.config.getOrThrow<string>('OPENAI_API_KEY'),
-      baseURL,
-      ...(baseURL.startsWith('https://openrouter.ai')
+      baseURL: this.baseURL,
+      ...(this.baseURL.startsWith('https://openrouter.ai')
         ? {
             defaultHeaders: {
               'X-OpenRouter-Title': 'x-executor',
@@ -140,11 +165,62 @@ export class LlmService {
           }
         : {}),
     });
-    this.model = resolveLlmModel(configuredModel, baseURL);
+    this.defaultModel = resolveLlmModel(configuredModel, this.baseURL);
+  }
+
+  resolveModel(model?: string): string {
+    const requested = model?.trim();
+    if (!requested) {
+      return this.defaultModel;
+    }
+    return resolveLlmModel(requested, this.baseURL);
+  }
+
+  async listModels(forceRefresh = false): Promise<OpenRouterModelOption[]> {
+    const cacheTtlMs = 15 * 60 * 1000;
+    const now = Date.now();
+
+    if (
+      !forceRefresh &&
+      this.modelsCache &&
+      now - this.modelsCache.fetchedAt < cacheTtlMs
+    ) {
+      return this.modelsCache.models;
+    }
+
+    const url = new URL(`${this.baseURL}/models`);
+    url.searchParams.set('output_modalities', 'text');
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${this.config.getOrThrow<string>('OPENAI_API_KEY')}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch OpenRouter models: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const payload = (await response.json()) as OpenRouterModelsResponse;
+    const models = (payload.data ?? [])
+      .filter((model) => model.id.includes('/'))
+      .map((model) => ({
+        id: model.id,
+        name: model.name?.trim() || model.id,
+        description: model.description?.trim() || undefined,
+        contextLength: model.context_length,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    this.modelsCache = { fetchedAt: now, models };
+    return models;
   }
 
   async generateReply(params: GenerateReplyParams): Promise<GenerateReplyResult> {
-    const { systemPrompt, userMessage, conversationHistory } = params;
+    const { systemPrompt, userMessage, conversationHistory, model } = params;
+    const resolvedModel = this.resolveModel(model);
 
     const systemContent = [
       'You answer questions using ONLY the knowledge block below.',
@@ -171,7 +247,7 @@ export class LlmService {
     ].join('\n');
 
     const completion = await this.client.chat.completions.create({
-      model: this.model,
+      model: resolvedModel,
       temperature: 0,
       response_format: { type: 'json_object' },
       messages: [

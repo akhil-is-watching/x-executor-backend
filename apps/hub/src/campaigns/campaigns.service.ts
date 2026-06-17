@@ -12,6 +12,10 @@ import {
   CampaignJob,
   CampaignJobDocument,
 } from '../schemas/campaign-job.schema';
+import {
+  XConnection,
+  XConnectionDocument,
+} from '../schemas/x-connection.schema';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 
 const UNTITLED_CAMPAIGN_NAME = 'Untitled campaign';
@@ -23,6 +27,8 @@ export class CampaignsService {
     private readonly campaignModel: Model<CampaignDocument>,
     @InjectModel(CampaignJob.name)
     private readonly campaignJobModel: Model<CampaignJobDocument>,
+    @InjectModel(XConnection.name)
+    private readonly connectionModel: Model<XConnectionDocument>,
     private readonly natsJs: NatsJsService,
   ) {}
 
@@ -39,7 +45,23 @@ export class CampaignsService {
       throw new BadRequestException('At least one valid target username is required');
     }
 
-    const campaign = await this.campaignModel.create({
+    const eligibleAccountCount = await this.countEligibleAccounts(orgId);
+    if (eligibleAccountCount === 0) {
+      throw new BadRequestException(
+        'At least one connected account with an auth token is required',
+      );
+    }
+
+    if (
+      dto.accountsToUse !== undefined &&
+      dto.accountsToUse > eligibleAccountCount
+    ) {
+      throw new BadRequestException(
+        `accountsToUse cannot exceed ${eligibleAccountCount} eligible connected account(s)`,
+      );
+    }
+
+    const campaignPayload: Record<string, unknown> = {
       orgId: new Types.ObjectId(orgId),
       name: dto.name.trim(),
       status: 'pending',
@@ -52,7 +74,13 @@ export class CampaignsService {
       repliesReceived: 0,
       failedCount: 0,
       cancelledCount: 0,
-    });
+    };
+
+    if (dto.accountsToUse !== undefined) {
+      campaignPayload.accountsToUse = dto.accountsToUse;
+    }
+
+    const campaign = await this.campaignModel.create(campaignPayload);
 
     const event: CampaignCreatedEvent = {
       campaignId: campaign._id.toString(),
@@ -71,6 +99,7 @@ export class CampaignsService {
       status: campaign.status,
       totalTargets: campaign.totalTargets,
       dmsPerHour: campaign.dmsPerHour,
+      accountsToUse: campaign.accountsToUse,
       messageText: campaign.messageText,
       targetUsernames: campaign.targetUsernames,
       createdAt: campaign.createdAt,
@@ -218,6 +247,7 @@ export class CampaignsService {
       targetUsernames: campaign.targetUsernames,
       totalTargets: campaign.totalTargets,
       dmsPerHour: campaign.dmsPerHour,
+      accountsToUse: campaign.accountsToUse,
       messagesScheduled: campaign.messagesScheduled,
       messagesSent: campaign.messagesSent,
       repliesReceived: campaign.repliesReceived,
@@ -232,6 +262,14 @@ export class CampaignsService {
       createdAt: campaign.createdAt,
       updatedAt: campaign.updatedAt,
     };
+  }
+
+  private async countEligibleAccounts(orgId: string): Promise<number> {
+    return this.connectionModel.countDocuments({
+      orgId: new Types.ObjectId(orgId),
+      revokedAt: null,
+      authTokenEnc: { $exists: true, $nin: [null, ''] },
+    });
   }
 
   private async findCampaignOrThrow(

@@ -364,24 +364,34 @@ Campaign sends do **not** require org `systemPrompt` (that is only for inbound L
 
 ```json
 {
+  "name": "Q1 outreach",
   "targetUsernames": ["alice", "@Bob", "charlie"],
-  "messageText": "Hi — we're reaching out from Acme."
+  "messageText": "Hi — we're reaching out from Acme.",
+  "dmsPerHour": 15,
+  "accountsToUse": 2
 }
 ```
 
 Validation (Hub):
 
+- `name` — required, max **100** chars
 - `targetUsernames` — non-empty array, max **10 000** strings
 - `messageText` — non-empty string
+- `dmsPerHour` — optional integer **1–30** (default **15**), per account
+- `accountsToUse` — optional integer **≥ 1**; cannot exceed the number of connected accounts with an auth token. When omitted, all eligible accounts are used. At plan time the scheduler picks the least-loaded N accounts from the eligible pool.
 - Usernames are normalized server-side: trim, strip leading `@`, lowercase, deduplicated
+- At least one connected account with an auth token is required to create a campaign
 
 **201 response:**
 
 ```json
 {
   "id": "674a...",
+  "name": "Q1 outreach",
   "status": "pending",
   "totalTargets": 3,
+  "dmsPerHour": 15,
+  "accountsToUse": 2,
   "messageText": "Hi — we're reaching out from Acme.",
   "targetUsernames": ["alice", "bob", "charlie"],
   "createdAt": "2026-06-08T12:00:00.000Z"
@@ -402,6 +412,8 @@ After create, redirect to a **campaign detail / progress** route (e.g. `/orgs/:o
   "messageText": "Hi — we're reaching out from Acme.",
   "targetUsernames": ["alice", "bob", "charlie"],
   "totalTargets": 3,
+  "dmsPerHour": 15,
+  "accountsToUse": 2,
   "messagesScheduled": 3,
   "messagesSent": 1,
   "repliesReceived": 0,
@@ -463,14 +475,20 @@ export type CampaignStatus =
   | 'failed';
 
 export interface CreateCampaignBody {
+  name: string;
   targetUsernames: string[];
   messageText: string;
+  dmsPerHour?: number;
+  accountsToUse?: number;
 }
 
 export interface CreateCampaignResponse {
   id: string;
+  name: string;
   status: CampaignStatus;
   totalTargets: number;
+  dmsPerHour: number;
+  accountsToUse?: number;
   messageText: string;
   targetUsernames: string[];
   createdAt: string;
@@ -479,10 +497,13 @@ export interface CreateCampaignResponse {
 export interface CampaignStatusResponse {
   id: string;
   orgId: string;
+  name: string;
   status: CampaignStatus;
   messageText: string;
   targetUsernames: string[];
   totalTargets: number;
+  dmsPerHour: number;
+  accountsToUse?: number;
   messagesScheduled: number;
   messagesSent: number;
   repliesReceived: number;
@@ -518,7 +539,7 @@ export const campaignsApi = {
 
 | Component | Route | Role | Behavior |
 |-----------|-------|------|----------|
-| `CampaignCreateForm` | `/orgs/:orgId/campaigns/new` | admin | Textarea for targets (one `@handle` per line); message textarea; validate non-empty; block submit if no `hasAuthToken` connections |
+| `CampaignCreateForm` | `/orgs/:orgId/campaigns/new` | admin | Targets textarea, message, **accounts to use** selector (1…N eligible), send rate; block submit if no `hasAuthToken` connections |
 | `CampaignProgressPage` | `/orgs/:orgId/campaigns/:campaignId` | member+ | Poll `getStatus`; progress bar; stats grid; ETA from `expectedEndAt`; admin pause/resume/stop |
 | `CampaignStatusBadge` | inline | all | Chip colors: pending=gray, running=blue, paused=amber, stopped=outline, completed=green, failed=red |
 | `CampaignLaunchChecklist` | create page | admin | Warn if zero connections or zero `hasAuthToken` |
@@ -636,7 +657,7 @@ Base: `{HUB_ORIGIN}/xbot/v1/api/hub`
 | `PATCH` | `/orgs/:orgId/connections/:id/auth-token` | JWT + admin | Encrypted `authTokenEnc` |
 | `PATCH` | `/orgs/:orgId/connections/:id/xchat-pin` | JWT + admin | Encrypted `xchatPinEnc`; body `{ "xchatPin": "1234" }` (4–8 digits) |
 | `DELETE` | `/orgs/:orgId/connections/:id` | JWT + admin | Revoke + unsubscribe |
-| `POST` | `/orgs/:orgId/campaigns` | JWT + admin | Create bulk DM campaign; body `{ "targetUsernames", "messageText" }` |
+| `POST` | `/orgs/:orgId/campaigns` | JWT + admin | Create bulk DM campaign; body `{ "name", "targetUsernames", "messageText", "dmsPerHour"?, "accountsToUse"? }` |
 | `POST` | `/orgs/:orgId/campaigns/:campaignId/pause` | JWT + admin | Pause a running campaign |
 | `POST` | `/orgs/:orgId/campaigns/:campaignId/resume` | JWT + admin | Resume a paused campaign |
 | `POST` | `/orgs/:orgId/campaigns/:campaignId/stop` | JWT + admin | Stop campaign and cancel pending jobs |

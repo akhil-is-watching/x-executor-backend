@@ -44,6 +44,9 @@ export class Campaign {
   @Prop({ required: true })
   totalTargets!: number;
 
+  @Prop({ min: 1 })
+  accountsToUse?: number;
+
   @Prop({ default: 0 })
   messagesSent!: number;
 

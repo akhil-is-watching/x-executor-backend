@@ -266,6 +266,7 @@ export class DmPipelineService {
     const llmResult = await this.llm.generateReply({
       systemPrompt: org.systemPrompt.trim(),
       userMessage: inboundText,
+      model: org.llmModel?.trim() || undefined,
       conversationHistory,
     });
 

@@ -121,6 +121,7 @@ describe('OrganizationsService', () => {
       {
         $set: {
           systemPrompt: 'New draft',
+          llmModel: 'google/gemini-3.5-flash',
           promptPublishedAt: expect.any(Date),
         },
       },
@@ -159,7 +160,12 @@ describe('OrganizationsService', () => {
 
     expect(orgModel.findByIdAndUpdate).toHaveBeenCalledWith(
       orgId.toString(),
-      { $set: { draftSystemPrompt: 'Published text' } },
+      {
+        $set: {
+          draftSystemPrompt: 'Published text',
+          draftLlmModel: 'google/gemini-3.5-flash',
+        },
+      },
       { returnDocument: 'after' },
     );
     expect(result.hasUnpublishedDraft).toBe(false);
@@ -184,6 +190,7 @@ describe('OrganizationsService', () => {
     expect(mockLlm.generateReply).toHaveBeenCalledWith({
       systemPrompt: 'Override draft',
       userMessage: 'Which chains?',
+      model: 'google/gemini-3.5-flash',
     });
   });
 
@@ -204,7 +211,28 @@ describe('OrganizationsService', () => {
       expect.objectContaining({
         systemPrompt: 'Saved draft',
         userMessage: 'Hi',
+        model: 'google/gemini-3.5-flash',
       }),
+    );
+  });
+
+  it('updatePrompt saves draft llmModel', async () => {
+    orgModel.findByIdAndUpdate.mockResolvedValue({
+      _id: orgId,
+      name: 'Acme Corp',
+      createdBy: userId,
+      llmModel: 'google/gemini-3.5-flash',
+      draftLlmModel: 'openai/gpt-4o-mini',
+    });
+
+    await service.updatePrompt(orgId.toString(), {
+      llmModel: 'openai/gpt-4o-mini',
+    });
+
+    expect(orgModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      orgId.toString(),
+      { $set: { draftLlmModel: 'openai/gpt-4o-mini' } },
+      { returnDocument: 'after' },
     );
   });
 

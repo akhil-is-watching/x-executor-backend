@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { LlmService } from '@app/llm';
+import { LlmService, DEFAULT_LLM_MODEL } from '@app/llm';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { ChatTestDto } from './dto/chat-test.dto';
 import { UpdateOrganizationPromptDto } from './dto/update-organization-prompt.dto';
@@ -90,17 +90,23 @@ export class OrganizationsService {
   }
 
   async updatePrompt(orgId: string, dto: UpdateOrganizationPromptDto) {
-    if (dto.systemPrompt === undefined) {
-      throw new BadRequestException('systemPrompt is required');
+    if (dto.systemPrompt === undefined && dto.llmModel === undefined) {
+      throw new BadRequestException(
+        'At least one of systemPrompt or llmModel is required',
+      );
+    }
+
+    const update: Record<string, string> = {};
+    if (dto.systemPrompt !== undefined) {
+      update.draftSystemPrompt = dto.systemPrompt;
+    }
+    if (dto.llmModel !== undefined) {
+      update.draftLlmModel = dto.llmModel;
     }
 
     const org = await this.orgModel.findByIdAndUpdate(
       orgId,
-      {
-        $set: {
-          draftSystemPrompt: dto.systemPrompt,
-        },
-      },
+      { $set: update },
       { returnDocument: 'after' },
     );
     if (!org) {
@@ -115,20 +121,27 @@ export class OrganizationsService {
       throw new NotFoundException('Organization not found');
     }
 
-    if (org.draftSystemPrompt === undefined) {
+    if (org.draftSystemPrompt === undefined && org.draftLlmModel === undefined) {
       throw new BadRequestException(
         'Save a draft before publishing. Nothing to publish yet.',
       );
     }
 
+    const publishUpdate: Record<string, string | Date> = {
+      promptPublishedAt: new Date(),
+    };
+    if (org.draftSystemPrompt !== undefined) {
+      publishUpdate.systemPrompt = org.draftSystemPrompt;
+    }
+    if (org.draftLlmModel !== undefined) {
+      publishUpdate.llmModel = org.draftLlmModel;
+    } else if (org.draftSystemPrompt !== undefined && !org.llmModel) {
+      publishUpdate.llmModel = DEFAULT_LLM_MODEL;
+    }
+
     const published = await this.orgModel.findByIdAndUpdate(
       orgId,
-      {
-        $set: {
-          systemPrompt: org.draftSystemPrompt,
-          promptPublishedAt: new Date(),
-        },
-      },
+      { $set: publishUpdate },
       { returnDocument: 'after' },
     );
 
@@ -145,7 +158,7 @@ export class OrganizationsService {
       throw new NotFoundException('Organization not found');
     }
 
-    if (org.draftSystemPrompt === undefined) {
+    if (org.draftSystemPrompt === undefined && org.draftLlmModel === undefined) {
       throw new BadRequestException('No draft to discard');
     }
 
@@ -154,6 +167,7 @@ export class OrganizationsService {
       {
         $set: {
           draftSystemPrompt: org.systemPrompt ?? '',
+          draftLlmModel: org.llmModel ?? DEFAULT_LLM_MODEL,
         },
       },
       { returnDocument: 'after' },
@@ -185,12 +199,21 @@ export class OrganizationsService {
     const result = await this.llm.generateReply({
       systemPrompt,
       userMessage: dto.userMessage.trim(),
+      model:
+        dto.llmModel?.trim() ??
+        org.draftLlmModel?.trim() ??
+        org.llmModel?.trim() ??
+        DEFAULT_LLM_MODEL,
     });
 
     return {
       reply: result.replyText,
       isKnownAnswer: result.isKnownAnswer,
     };
+  }
+
+  async listLlmModels() {
+    return this.llm.listModels();
   }
 
   async listMembers(orgId: string) {
@@ -211,11 +234,27 @@ export class OrganizationsService {
   }
 
   private hasUnpublishedDraft(org: OrganizationDocument): boolean {
-    if (org.draftSystemPrompt === undefined) {
+    if (org.draftSystemPrompt === undefined && org.draftLlmModel === undefined) {
       return false;
     }
-    const published = org.systemPrompt?.trim() ?? '';
-    return org.draftSystemPrompt.trim() !== published;
+
+    const publishedPrompt = org.systemPrompt?.trim() ?? '';
+    const draftPrompt = org.draftSystemPrompt?.trim() ?? publishedPrompt;
+    const promptChanged = draftPrompt !== publishedPrompt;
+
+    const publishedModel = org.llmModel?.trim() ?? DEFAULT_LLM_MODEL;
+    const draftModel = org.draftLlmModel?.trim() ?? publishedModel;
+    const modelChanged = draftModel !== publishedModel;
+
+    return promptChanged || modelChanged;
+  }
+
+  private resolveDraftLlmModel(org: OrganizationDocument): string {
+    return org.draftLlmModel?.trim() ?? org.llmModel?.trim() ?? DEFAULT_LLM_MODEL;
+  }
+
+  private resolvePublishedLlmModel(org: OrganizationDocument): string {
+    return org.llmModel?.trim() ?? DEFAULT_LLM_MODEL;
   }
 
   private toOrgResponse(org: OrganizationDocument) {
@@ -227,6 +266,8 @@ export class OrganizationsService {
       draftSystemPrompt: org.draftSystemPrompt,
       hasUnpublishedDraft: this.hasUnpublishedDraft(org),
       promptPublishedAt: org.promptPublishedAt,
+      llmModel: this.resolvePublishedLlmModel(org),
+      draftLlmModel: this.resolveDraftLlmModel(org),
       createdBy: org.createdBy.toString(),
       createdAt: (org as OrganizationDocument & { createdAt?: Date }).createdAt,
     };

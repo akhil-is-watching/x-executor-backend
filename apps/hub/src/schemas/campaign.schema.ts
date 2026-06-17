@@ -47,6 +47,9 @@ export class Campaign {
   @Prop({ default: 15 })
   dmsPerHour!: number;
 
+  @Prop({ min: 1 })
+  accountsToUse?: number;
+
   @Prop({ default: 0 })
   messagesSent!: number;
 

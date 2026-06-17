@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import {
   LlmService,
   OPENROUTER_BASE_URL,
+  DEFAULT_LLM_MODEL,
   parseLlmResponse,
   resolveLlmModel,
 } from './llm.service';
@@ -127,7 +128,7 @@ describe('LlmService', () => {
               throw new Error(name);
             },
             get: (name: string) => {
-              if (name === 'OPENAI_MODEL') return 'gpt-4o-mini';
+              if (name === 'OPENAI_MODEL') return DEFAULT_LLM_MODEL;
               return undefined;
             },
           },
@@ -163,7 +164,7 @@ describe('LlmService', () => {
               if (name === 'OPENAI_BASE_URL') {
                 return 'https://proxy.example/v1';
               }
-              if (name === 'OPENAI_MODEL') return 'gpt-4o-mini';
+              if (name === 'OPENAI_MODEL') return DEFAULT_LLM_MODEL;
               return undefined;
             },
           },
@@ -195,7 +196,7 @@ describe('LlmService', () => {
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'openai/gpt-4o-mini',
+        model: DEFAULT_LLM_MODEL,
         response_format: { type: 'json_object' },
       }),
     );
@@ -295,6 +296,24 @@ describe('LlmService', () => {
     const systemMsg = calledWith.messages[0].content;
     expect(systemMsg).toContain('GREETING RULE');
     expect(systemMsg).toContain('knownAnswer');
+  });
+
+  it('uses an explicit model override when provided', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: '{"reply":"Hello","knownAnswer":true}' } }],
+    });
+
+    await service.generateReply({
+      systemPrompt: 'You are a support bot.',
+      userMessage: 'Hi',
+      model: 'anthropic/claude-3.5-sonnet',
+    });
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'anthropic/claude-3.5-sonnet',
+      }),
+    );
   });
 
   it('includes conversation history in OpenAI messages', async () => {

@@ -20,4 +20,14 @@ export class ChatTestDto {
   @IsString()
   @MaxLength(32_000)
   systemPrompt?: string;
+
+  @ApiPropertyOptional({
+    example: 'google/gemini-3.5-flash',
+    description:
+      'Draft LLM model to test. If omitted, uses org draft then published model.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  llmModel?: string;
 }

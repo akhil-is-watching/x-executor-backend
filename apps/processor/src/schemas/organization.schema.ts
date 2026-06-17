@@ -24,6 +24,12 @@ export class Organization {
   promptPublishedAt?: Date;
 
   @Prop()
+  llmModel?: string;
+
+  @Prop()
+  draftLlmModel?: string;
+
+  @Prop()
   unknownReply?: string;
 }
 

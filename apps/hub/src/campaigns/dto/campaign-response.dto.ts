@@ -28,6 +28,9 @@ export class CreateCampaignResponseDto {
   @ApiProperty({ example: 15 })
   dmsPerHour!: number;
 
+  @ApiPropertyOptional({ example: 2 })
+  accountsToUse?: number;
+
   @ApiProperty({ example: 'Hello from our team!' })
   messageText!: string;
 
@@ -65,6 +68,9 @@ export class CampaignStatusResponseDto {
 
   @ApiProperty({ example: 15 })
   dmsPerHour!: number;
+
+  @ApiPropertyOptional({ example: 2 })
+  accountsToUse?: number;
 
   @ApiProperty({ example: 100 })
   messagesScheduled!: number;

@@ -71,6 +71,38 @@ export class AccountSelectorService {
     );
   }
 
+  async pickLeastLoadedAccounts(
+    accounts: AccountCandidate[],
+    limit: number,
+  ): Promise<AccountCandidate[]> {
+    if (accounts.length === 0 || limit >= accounts.length) {
+      return accounts;
+    }
+
+    const sendCounts = await this.loadSendCounts(accounts);
+
+    return [...accounts]
+      .sort((left, right) => {
+        const leftCounts = sendCounts.get(left.connectionId) ?? {
+          lastHour: 0,
+          today: 0,
+        };
+        const rightCounts = sendCounts.get(right.connectionId) ?? {
+          lastHour: 0,
+          today: 0,
+        };
+        const leftLoad = leftCounts.lastHour + leftCounts.today;
+        const rightLoad = rightCounts.lastHour + rightCounts.today;
+
+        if (leftLoad !== rightLoad) {
+          return leftLoad - rightLoad;
+        }
+
+        return left.connectionId.localeCompare(right.connectionId);
+      })
+      .slice(0, limit);
+  }
+
   async planJobs(
     accounts: AccountCandidate[],
     targetUsernames: string[],

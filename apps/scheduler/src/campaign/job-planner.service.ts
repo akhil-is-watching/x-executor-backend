@@ -67,10 +67,40 @@ export class JobPlannerService {
       return;
     }
 
-    const accounts = connections.map((connection) => ({
+    const allAccounts = connections.map((connection) => ({
       connectionId: connection._id.toString(),
       xUserId: connection.xUserId,
     }));
+
+    const requestedCount = campaign.accountsToUse ?? connections.length;
+    const effectiveLimit = Math.min(requestedCount, connections.length);
+
+    if (effectiveLimit < requestedCount) {
+      this.logger.warn(
+        `Campaign ${event.campaignId} requested ${requestedCount} account(s) but only ${connections.length} eligible; using ${effectiveLimit}`,
+      );
+    }
+
+    const accounts = await this.accountSelector.pickLeastLoadedAccounts(
+      allAccounts,
+      effectiveLimit,
+    );
+
+    if (accounts.length === 0) {
+      await this.campaignModel.updateOne(
+        { _id: campaign._id },
+        {
+          $set: {
+            status: 'failed',
+            completedAt: new Date(),
+          },
+        },
+      );
+      this.logger.error(
+        `Campaign ${event.campaignId} failed: no accounts available after selection`,
+      );
+      return;
+    }
 
     const plannedJobs = await this.accountSelector.planJobs(
       accounts,
@@ -116,7 +146,8 @@ export class JobPlannerService {
 
     this.logger.log(
       `Planned ${plannedJobs.length} jobs for campaign ${event.campaignId} ` +
-        `using ${accounts.length} account(s); expectedEndAt=${expectedEndAt.toISOString()}`,
+        `using ${accounts.length} of ${connections.length} eligible account(s) ` +
+        `(requested=${requestedCount}); expectedEndAt=${expectedEndAt.toISOString()}`,
     );
   }
 }

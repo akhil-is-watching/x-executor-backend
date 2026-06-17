@@ -5,6 +5,7 @@ import { Types } from 'mongoose';
 import { NatsJsService } from '@app/nats-js';
 import { Campaign } from '../schemas/campaign.schema';
 import { CampaignJob } from '../schemas/campaign-job.schema';
+import { XConnection } from '../schemas/x-connection.schema';
 import { CampaignsService } from './campaigns.service';
 
 describe('CampaignsService', () => {
@@ -44,6 +45,10 @@ describe('CampaignsService', () => {
     updateMany: jest.fn(),
   };
 
+  const connectionModel = {
+    countDocuments: jest.fn().mockResolvedValue(2),
+  };
+
   const natsJs = {
     publishJson: jest.fn().mockResolvedValue(undefined),
   };
@@ -61,6 +66,10 @@ describe('CampaignsService', () => {
         {
           provide: getModelToken(CampaignJob.name),
           useValue: campaignJobModel,
+        },
+        {
+          provide: getModelToken(XConnection.name),
+          useValue: connectionModel,
         },
         {
           provide: NatsJsService,
@@ -101,6 +110,54 @@ describe('CampaignsService', () => {
         service.create(orgId.toString(), {
           name: 'Empty targets',
           targetUsernames: ['  ', '@'],
+          messageText: 'Hello',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('persists accountsToUse when provided', async () => {
+      campaignModel.create.mockResolvedValue({
+        ...campaignDoc,
+        status: 'pending',
+        messagesScheduled: 0,
+        accountsToUse: 2,
+      });
+
+      const result = await service.create(orgId.toString(), {
+        name: 'Limited accounts',
+        targetUsernames: ['@alice'],
+        messageText: 'Hello',
+        accountsToUse: 2,
+      });
+
+      expect(campaignModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountsToUse: 2,
+        }),
+      );
+      expect(result.accountsToUse).toBe(2);
+    });
+
+    it('rejects accountsToUse greater than eligible connections', async () => {
+      connectionModel.countDocuments.mockResolvedValue(1);
+
+      await expect(
+        service.create(orgId.toString(), {
+          name: 'Too many accounts',
+          targetUsernames: ['alice'],
+          messageText: 'Hello',
+          accountsToUse: 3,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects create when no eligible connections exist', async () => {
+      connectionModel.countDocuments.mockResolvedValue(0);
+
+      await expect(
+        service.create(orgId.toString(), {
+          name: 'No accounts',
+          targetUsernames: ['alice'],
           messageText: 'Hello',
         }),
       ).rejects.toThrow(BadRequestException);

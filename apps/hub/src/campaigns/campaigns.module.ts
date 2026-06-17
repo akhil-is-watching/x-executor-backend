@@ -7,6 +7,10 @@ import {
   CampaignJobSchema,
 } from '../schemas/campaign-job.schema';
 import {
+  XConnection,
+  XConnectionSchema,
+} from '../schemas/x-connection.schema';
+import {
   OrganizationMembership,
   OrganizationMembershipSchema,
 } from '../schemas/organization-membership.schema';
@@ -21,6 +25,7 @@ import { CampaignsService } from './campaigns.service';
     MongooseModule.forFeature([
       { name: Campaign.name, schema: CampaignSchema },
       { name: CampaignJob.name, schema: CampaignJobSchema },
+      { name: XConnection.name, schema: XConnectionSchema },
       {
         name: OrganizationMembership.name,
         schema: OrganizationMembershipSchema,

@@ -28,6 +28,18 @@ export class OrganizationDto {
   @ApiPropertyOptional({ type: String, format: 'date-time' })
   promptPublishedAt?: Date;
 
+  @ApiPropertyOptional({
+    example: 'google/gemini-3.5-flash',
+    description: 'Published LLM model used for live inbound DM replies',
+  })
+  llmModel?: string;
+
+  @ApiPropertyOptional({
+    example: 'google/gemini-3.5-flash',
+    description: 'Draft LLM model (editable; not live until published)',
+  })
+  draftLlmModel?: string;
+
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   createdBy!: string;
 

@@ -10,8 +10,23 @@ export class OrganizationDto {
   @ApiPropertyOptional({ example: 'acme-corp' })
   slug?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description: 'Published system prompt used for live inbound DM replies',
+  })
   systemPrompt?: string;
+
+  @ApiPropertyOptional({
+    description: 'Draft system prompt (editable; not live until published)',
+  })
+  draftSystemPrompt?: string;
+
+  @ApiProperty({
+    description: 'True when saved draft differs from the published prompt',
+  })
+  hasUnpublishedDraft!: boolean;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  promptPublishedAt?: Date;
 
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   createdBy!: string;

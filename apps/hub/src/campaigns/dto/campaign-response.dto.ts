@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export const CAMPAIGN_STATUS_VALUES = [
+  'pending',
+  'running',
+  'paused',
+  'stopped',
+  'completed',
+  'failed',
+] as const;
+
 export class CreateCampaignResponseDto {
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   id!: string;
@@ -8,7 +17,7 @@ export class CreateCampaignResponseDto {
   name!: string;
 
   @ApiProperty({
-    enum: ['pending', 'running', 'completed', 'failed'],
+    enum: CAMPAIGN_STATUS_VALUES,
     example: 'pending',
   })
   status!: string;
@@ -40,7 +49,7 @@ export class CampaignStatusResponseDto {
   name!: string;
 
   @ApiProperty({
-    enum: ['pending', 'running', 'completed', 'failed'],
+    enum: CAMPAIGN_STATUS_VALUES,
     example: 'running',
   })
   status!: string;
@@ -69,6 +78,9 @@ export class CampaignStatusResponseDto {
   @ApiProperty({ example: 2 })
   failedCount!: number;
 
+  @ApiProperty({ example: 0 })
+  cancelledCount!: number;
+
   @ApiProperty({ example: 56 })
   remaining!: number;
 
@@ -83,6 +95,9 @@ export class CampaignStatusResponseDto {
 
   @ApiPropertyOptional({ type: String, format: 'date-time' })
   completedAt?: Date;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  stoppedAt?: Date;
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: Date;
@@ -99,7 +114,7 @@ export class CampaignSummaryDto {
   name!: string;
 
   @ApiProperty({
-    enum: ['pending', 'running', 'completed', 'failed'],
+    enum: CAMPAIGN_STATUS_VALUES,
     example: 'running',
   })
   status!: string;
@@ -129,6 +144,29 @@ export class UpdateCampaignResponseDto {
 
   @ApiProperty({ example: 'Q1 outreach (revised)' })
   name!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  updatedAt!: Date;
+}
+
+export class CampaignControlResponseDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  id!: string;
+
+  @ApiProperty({
+    enum: CAMPAIGN_STATUS_VALUES,
+    example: 'paused',
+  })
+  status!: string;
+
+  @ApiProperty({ example: 12 })
+  cancelledCount!: number;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  completedAt?: Date;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  stoppedAt?: Date;
 
   @ApiProperty({ type: String, format: 'date-time' })
   updatedAt!: Date;

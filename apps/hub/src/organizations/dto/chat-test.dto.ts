@@ -14,7 +14,7 @@ export class ChatTestDto {
   @ApiPropertyOptional({
     maxLength: 32_000,
     description:
-      'Draft system prompt to test. If omitted, uses the saved org systemPrompt.',
+      'Draft system prompt to test. If omitted, uses org draft then published prompt.',
   })
   @IsOptional()
   @IsString()

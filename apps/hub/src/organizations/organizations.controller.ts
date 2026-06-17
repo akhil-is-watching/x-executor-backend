@@ -77,7 +77,7 @@ export class OrganizationsController {
 
   @Patch(':orgId/prompt')
   @UseGuards(OrgMemberGuard, OrgAdminGuard)
-  @ApiOperation({ summary: 'Update LLM system prompt (admin only)' })
+  @ApiOperation({ summary: 'Save draft system prompt (admin only)' })
   @ApiResponse({ status: 200, type: OrganizationDto })
   @ApiResponse({ status: 403, description: 'Admin required' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
@@ -86,6 +86,30 @@ export class OrganizationsController {
     @Body() dto: UpdateOrganizationPromptDto,
   ) {
     return this.organizationsService.updatePrompt(orgId, dto);
+  }
+
+  @Post(':orgId/prompt/publish')
+  @UseGuards(OrgMemberGuard, OrgAdminGuard)
+  @ApiOperation({ summary: 'Publish draft prompt to production (admin only)' })
+  @ApiResponse({ status: 200, type: OrganizationDto })
+  @ApiResponse({ status: 400, description: 'No draft to publish' })
+  @ApiResponse({ status: 403, description: 'Admin required' })
+  @ApiResponse({ status: 404, description: 'Organization not found' })
+  publishPrompt(@Param('orgId') orgId: string) {
+    return this.organizationsService.publishPrompt(orgId);
+  }
+
+  @Post(':orgId/prompt/discard')
+  @UseGuards(OrgMemberGuard, OrgAdminGuard)
+  @ApiOperation({
+    summary: 'Discard draft changes and revert to published prompt (admin only)',
+  })
+  @ApiResponse({ status: 200, type: OrganizationDto })
+  @ApiResponse({ status: 400, description: 'No draft to discard' })
+  @ApiResponse({ status: 403, description: 'Admin required' })
+  @ApiResponse({ status: 404, description: 'Organization not found' })
+  discardDraft(@Param('orgId') orgId: string) {
+    return this.organizationsService.discardDraft(orgId);
   }
 
   @Post(':orgId/chat/test')

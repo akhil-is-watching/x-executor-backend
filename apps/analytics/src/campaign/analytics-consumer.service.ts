@@ -124,7 +124,14 @@ export class AnalyticsConsumerService implements OnApplicationBootstrap {
       return;
     }
 
-    const processed = campaign.messagesSent + campaign.failedCount;
+    if (campaign.status !== 'running') {
+      return;
+    }
+
+    const processed =
+      campaign.messagesSent +
+      campaign.failedCount +
+      (campaign.cancelledCount ?? 0);
     const remaining = Math.max(campaign.totalTargets - processed, 0);
     const now = new Date();
     const expectedEndAt = await this.calculateExpectedEndAt(
@@ -157,7 +164,10 @@ export class AnalyticsConsumerService implements OnApplicationBootstrap {
 
     if (campaign.startedAt) {
       const elapsedMs = Math.max(now.getTime() - campaign.startedAt.getTime(), 1);
-      const processed = campaign.messagesSent + campaign.failedCount;
+      const processed =
+        campaign.messagesSent +
+        campaign.failedCount +
+        (campaign.cancelledCount ?? 0);
       if (processed > 0) {
         const ratePerMs = processed / elapsedMs;
         return new Date(now.getTime() + remaining / ratePerMs);

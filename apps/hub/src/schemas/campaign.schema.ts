@@ -3,7 +3,22 @@ import { HydratedDocument, Types } from 'mongoose';
 
 export type CampaignDocument = HydratedDocument<Campaign>;
 
-export type CampaignStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type CampaignStatus =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'stopped'
+  | 'completed'
+  | 'failed';
+
+export const CAMPAIGN_STATUSES = [
+  'pending',
+  'running',
+  'paused',
+  'stopped',
+  'completed',
+  'failed',
+] as const;
 
 @Schema({ timestamps: true, collection: 'campaigns' })
 export class Campaign {
@@ -15,7 +30,7 @@ export class Campaign {
 
   @Prop({
     required: true,
-    enum: ['pending', 'running', 'completed', 'failed'],
+    enum: CAMPAIGN_STATUSES,
     default: 'pending',
   })
   status!: CampaignStatus;
@@ -44,6 +59,9 @@ export class Campaign {
   @Prop({ default: 0 })
   failedCount!: number;
 
+  @Prop({ default: 0 })
+  cancelledCount!: number;
+
   @Prop()
   startedAt?: Date;
 
@@ -52,6 +70,9 @@ export class Campaign {
 
   @Prop()
   completedAt?: Date;
+
+  @Prop()
+  stoppedAt?: Date;
 }
 
 export const CampaignSchema = SchemaFactory.createForClass(Campaign);

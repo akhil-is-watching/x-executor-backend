@@ -3,7 +3,20 @@ import { HydratedDocument, Types } from 'mongoose';
 
 export type CampaignJobDocument = HydratedDocument<CampaignJob>;
 
-export type CampaignJobStatus = 'pending' | 'dispatched' | 'sent' | 'failed';
+export type CampaignJobStatus =
+  | 'pending'
+  | 'dispatched'
+  | 'sent'
+  | 'failed'
+  | 'cancelled';
+
+export const CAMPAIGN_JOB_STATUSES = [
+  'pending',
+  'dispatched',
+  'sent',
+  'failed',
+  'cancelled',
+] as const;
 
 @Schema({ timestamps: true, collection: 'campaign_jobs' })
 export class CampaignJob {
@@ -30,7 +43,7 @@ export class CampaignJob {
 
   @Prop({
     required: true,
-    enum: ['pending', 'dispatched', 'sent', 'failed'],
+    enum: CAMPAIGN_JOB_STATUSES,
     default: 'pending',
   })
   status!: CampaignJobStatus;

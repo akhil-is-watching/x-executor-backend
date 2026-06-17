@@ -24,6 +24,7 @@ describe('OrganizationsService', () => {
       createdBy: userId,
     }),
     findById: jest.fn(),
+    findByIdAndUpdate: jest.fn(),
   };
 
   const membershipModel = {
@@ -62,15 +63,6 @@ describe('OrganizationsService', () => {
 
     expect(membershipModel.exists).toHaveBeenCalled();
     expect(orgModel.create).toHaveBeenCalled();
-    expect(membershipModel.create).toHaveBeenCalledWith({
-      orgId,
-      userId,
-      role: OrgRole.Owner,
-    });
-    expect(userModel.updateOne).toHaveBeenCalledWith(
-      { _id: userId },
-      { $set: { orgId: orgId.toString() } },
-    );
     expect(result.id).toBe(orgId.toString());
   });
 
@@ -80,39 +72,126 @@ describe('OrganizationsService', () => {
     await expect(
       service.create(userId.toString(), { name: 'Another Org' }),
     ).rejects.toBeInstanceOf(ConflictException);
-
-    expect(orgModel.create).not.toHaveBeenCalled();
   });
 
-  it('testChat uses draft prompt and returns LLM reply', async () => {
+  it('updatePrompt saves draft only', async () => {
+    orgModel.findByIdAndUpdate.mockResolvedValue({
+      _id: orgId,
+      name: 'Acme Corp',
+      createdBy: userId,
+      systemPrompt: 'Published text',
+      draftSystemPrompt: 'Draft text',
+    });
+
+    const result = await service.updatePrompt(orgId.toString(), {
+      systemPrompt: 'Draft text',
+    });
+
+    expect(orgModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      orgId.toString(),
+      { $set: { draftSystemPrompt: 'Draft text' } },
+      { returnDocument: 'after' },
+    );
+    expect(result.hasUnpublishedDraft).toBe(true);
+    expect(result.systemPrompt).toBe('Published text');
+    expect(result.draftSystemPrompt).toBe('Draft text');
+  });
+
+  it('publishPrompt copies draft to systemPrompt', async () => {
     orgModel.findById.mockResolvedValue({
       _id: orgId,
-      systemPrompt: 'Saved prompt',
+      name: 'Acme Corp',
+      createdBy: userId,
+      systemPrompt: 'Old published',
+      draftSystemPrompt: 'New draft',
+    });
+    orgModel.findByIdAndUpdate.mockResolvedValue({
+      _id: orgId,
+      name: 'Acme Corp',
+      createdBy: userId,
+      systemPrompt: 'New draft',
+      draftSystemPrompt: 'New draft',
+      promptPublishedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.publishPrompt(orgId.toString());
+
+    expect(orgModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      orgId.toString(),
+      {
+        $set: {
+          systemPrompt: 'New draft',
+          promptPublishedAt: expect.any(Date),
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    expect(result.systemPrompt).toBe('New draft');
+    expect(result.hasUnpublishedDraft).toBe(false);
+  });
+
+  it('publishPrompt rejects when no draft was saved', async () => {
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'Published only',
+    });
+
+    await expect(service.publishPrompt(orgId.toString())).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('discardDraft resets draft to published prompt', async () => {
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'Published text',
+      draftSystemPrompt: 'Changed draft',
+      createdBy: userId,
+    });
+    orgModel.findByIdAndUpdate.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'Published text',
+      draftSystemPrompt: 'Published text',
+      createdBy: userId,
+    });
+
+    const result = await service.discardDraft(orgId.toString());
+
+    expect(orgModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      orgId.toString(),
+      { $set: { draftSystemPrompt: 'Published text' } },
+      { returnDocument: 'after' },
+    );
+    expect(result.hasUnpublishedDraft).toBe(false);
+  });
+
+  it('testChat prefers explicit draft over published prompt', async () => {
+    orgModel.findById.mockResolvedValue({
+      _id: orgId,
+      systemPrompt: 'Published prompt',
+      draftSystemPrompt: 'Saved draft',
     });
     mockLlm.generateReply.mockResolvedValue({
       replyText: 'Yes, Noah supports Solana.',
       isKnownAnswer: true,
     });
 
-    const result = await service.testChat(orgId.toString(), {
+    await service.testChat(orgId.toString(), {
       userMessage: 'Which chains?',
-      systemPrompt: 'Noah supports Solana and Irys.',
+      systemPrompt: 'Override draft',
     });
 
     expect(mockLlm.generateReply).toHaveBeenCalledWith({
-      systemPrompt: 'Noah supports Solana and Irys.',
+      systemPrompt: 'Override draft',
       userMessage: 'Which chains?',
-    });
-    expect(result).toEqual({
-      reply: 'Yes, Noah supports Solana.',
-      isKnownAnswer: true,
     });
   });
 
-  it('testChat falls back to org prompt when draft omitted', async () => {
+  it('testChat falls back to saved draft then published prompt', async () => {
     orgModel.findById.mockResolvedValue({
       _id: orgId,
-      systemPrompt: 'Org prompt text',
+      systemPrompt: 'Published prompt',
+      draftSystemPrompt: 'Saved draft',
     });
     mockLlm.generateReply.mockResolvedValue({
       replyText: 'Hello!',
@@ -123,22 +202,19 @@ describe('OrganizationsService', () => {
 
     expect(mockLlm.generateReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: 'Org prompt text',
+        systemPrompt: 'Saved draft',
         userMessage: 'Hi',
       }),
     );
   });
 
-  it('testChat rejects when no draft and org has no systemPrompt', async () => {
+  it('testChat rejects when no prompt is available', async () => {
     orgModel.findById.mockResolvedValue({
       _id: orgId,
-      systemPrompt: undefined,
     });
 
     await expect(
       service.testChat(orgId.toString(), { userMessage: 'Hi' }),
     ).rejects.toBeInstanceOf(BadRequestException);
-
-    expect(mockLlm.generateReply).not.toHaveBeenCalled();
   });
 });

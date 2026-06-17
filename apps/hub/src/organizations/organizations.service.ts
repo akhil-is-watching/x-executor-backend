@@ -90,13 +90,15 @@ export class OrganizationsService {
   }
 
   async updatePrompt(orgId: string, dto: UpdateOrganizationPromptDto) {
+    if (dto.systemPrompt === undefined) {
+      throw new BadRequestException('systemPrompt is required');
+    }
+
     const org = await this.orgModel.findByIdAndUpdate(
       orgId,
       {
         $set: {
-          ...(dto.systemPrompt !== undefined
-            ? { systemPrompt: dto.systemPrompt }
-            : {}),
+          draftSystemPrompt: dto.systemPrompt,
         },
       },
       { returnDocument: 'after' },
@@ -107,16 +109,76 @@ export class OrganizationsService {
     return this.toOrgResponse(org);
   }
 
+  async publishPrompt(orgId: string) {
+    const org = await this.orgModel.findById(orgId);
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    if (org.draftSystemPrompt === undefined) {
+      throw new BadRequestException(
+        'Save a draft before publishing. Nothing to publish yet.',
+      );
+    }
+
+    const published = await this.orgModel.findByIdAndUpdate(
+      orgId,
+      {
+        $set: {
+          systemPrompt: org.draftSystemPrompt,
+          promptPublishedAt: new Date(),
+        },
+      },
+      { returnDocument: 'after' },
+    );
+
+    if (!published) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    return this.toOrgResponse(published);
+  }
+
+  async discardDraft(orgId: string) {
+    const org = await this.orgModel.findById(orgId);
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    if (org.draftSystemPrompt === undefined) {
+      throw new BadRequestException('No draft to discard');
+    }
+
+    const updated = await this.orgModel.findByIdAndUpdate(
+      orgId,
+      {
+        $set: {
+          draftSystemPrompt: org.systemPrompt ?? '',
+        },
+      },
+      { returnDocument: 'after' },
+    );
+
+    if (!updated) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    return this.toOrgResponse(updated);
+  }
+
   async testChat(orgId: string, dto: ChatTestDto) {
     const org = await this.orgModel.findById(orgId);
     if (!org) {
       throw new NotFoundException('Organization not found');
     }
 
-    const systemPrompt = dto.systemPrompt?.trim() ?? org.systemPrompt?.trim();
+    const systemPrompt =
+      dto.systemPrompt?.trim() ??
+      org.draftSystemPrompt?.trim() ??
+      org.systemPrompt?.trim();
     if (!systemPrompt) {
       throw new BadRequestException(
-        'systemPrompt is required when the organization has no saved system prompt',
+        'systemPrompt is required when the organization has no draft or published prompt',
       );
     }
 
@@ -148,12 +210,23 @@ export class OrganizationsService {
     }));
   }
 
+  private hasUnpublishedDraft(org: OrganizationDocument): boolean {
+    if (org.draftSystemPrompt === undefined) {
+      return false;
+    }
+    const published = org.systemPrompt?.trim() ?? '';
+    return org.draftSystemPrompt.trim() !== published;
+  }
+
   private toOrgResponse(org: OrganizationDocument) {
     return {
       id: org._id.toString(),
       name: org.name,
       slug: org.slug,
       systemPrompt: org.systemPrompt,
+      draftSystemPrompt: org.draftSystemPrompt,
+      hasUnpublishedDraft: this.hasUnpublishedDraft(org),
+      promptPublishedAt: org.promptPublishedAt,
       createdBy: org.createdBy.toString(),
       createdAt: (org as OrganizationDocument & { createdAt?: Date }).createdAt,
     };

@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import {
   NATS_SUBJECT_CAMPAIGN_DM_READY,
   NatsJsService,
 } from '@app/nats-js';
 import type { CampaignDmReadyEvent } from '@app/shared';
+import { Campaign, CampaignDocument } from '../schemas/campaign.schema';
 import {
   CampaignJob,
   CampaignJobDocument,
@@ -20,6 +21,8 @@ export class JobDispatcherService {
   constructor(
     @InjectModel(CampaignJob.name)
     private readonly campaignJobModel: Model<CampaignJobDocument>,
+    @InjectModel(Campaign.name)
+    private readonly campaignModel: Model<CampaignDocument>,
     private readonly natsJs: NatsJsService,
   ) {}
 
@@ -44,9 +47,30 @@ export class JobDispatcherService {
         return;
       }
 
-      this.logger.log(`Dispatching ${dueJobs.length} due campaign job(s)`);
+      const campaignIds = [
+        ...new Set(dueJobs.map((job) => job.campaignId.toString())),
+      ];
+      const runningCampaigns = await this.campaignModel.find({
+        _id: { $in: campaignIds.map((id) => new Types.ObjectId(id)) },
+        status: 'running',
+      });
+      const runningCampaignIds = new Set(
+        runningCampaigns.map((campaign) => campaign._id.toString()),
+      );
 
-      for (const job of dueJobs) {
+      const jobsToDispatch = dueJobs.filter((job) =>
+        runningCampaignIds.has(job.campaignId.toString()),
+      );
+
+      if (jobsToDispatch.length === 0) {
+        return;
+      }
+
+      this.logger.log(
+        `Dispatching ${jobsToDispatch.length} due campaign job(s)`,
+      );
+
+      for (const job of jobsToDispatch) {
         const event: CampaignDmReadyEvent = {
           jobId: job._id.toString(),
           campaignId: job.campaignId.toString(),

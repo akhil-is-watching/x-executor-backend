@@ -18,6 +18,12 @@ export class Organization {
   systemPrompt?: string;
 
   @Prop()
+  draftSystemPrompt?: string;
+
+  @Prop()
+  promptPublishedAt?: Date;
+
+  @Prop()
   unknownReply?: string;
 }
 

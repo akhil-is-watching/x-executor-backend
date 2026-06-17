@@ -310,25 +310,28 @@ Do **not** persist the PIN in frontend storage after the request succeeds — tr
 
 ### 6. Organization prompts (admin) — required for DM replies
 
-The processor skips automated replies when `systemPrompt` is empty (`apps/processor` reads org from MongoDB).
+The processor skips automated replies when no **published** `systemPrompt` is set (`apps/processor` reads org from MongoDB). Draft edits do not affect live replies until published.
 
 | Method | Path | Body |
 |--------|------|------|
-| `GET` | `/orgs/:orgId` | — returns `systemPrompt` |
-| `PATCH` | `/orgs/:orgId/prompt` | `{ "systemPrompt"? }` |
+| `GET` | `/orgs/:orgId` | — returns `systemPrompt` (live), `draftSystemPrompt`, `hasUnpublishedDraft` |
+| `PATCH` | `/orgs/:orgId/prompt` | `{ "systemPrompt" }` — saves **draft** only |
+| `POST` | `/orgs/:orgId/prompt/publish` | — copies draft → published `systemPrompt` |
+| `POST` | `/orgs/:orgId/prompt/discard` | — resets draft to match published prompt |
 
 Limits (Hub validation): `systemPrompt` max 32 000 chars. Include out-of-scope handling inside the system prompt (e.g. “If you cannot answer, direct users to support@…”).
 
 **Reference UI:**
 
-- **Org dashboard** (`/orgs/:orgId`) — `OrgPromptForm` card for owner/admin; badge if prompt unset.
+- **Org dashboard** (`/orgs/:orgId`) — draft editor, test panel, Save draft / Publish / Discard; badge if prompt unset or unpublished draft exists.
 - **Settings** (`/orgs/:orgId/settings`) — same form + members table.
-- **Org list** — hint when admin/owner and prompt missing.
+- **Org list** — hint when admin/owner and published prompt missing.
 
 ```ts
 await orgsApi.updatePrompt(token, orgId, {
-  systemPrompt: 'You are support for Acme. Only answer from: ... If unknown, ask them to email support@acme.com.',
+  systemPrompt: 'You are support for Acme. Only answer from: ...',
 });
+await orgsApi.publishPrompt(token, orgId);
 ```
 
 ### 7. Invites (admin)
@@ -403,6 +406,7 @@ After create, redirect to a **campaign detail / progress** route (e.g. `/orgs/:o
   "messagesSent": 1,
   "repliesReceived": 0,
   "failedCount": 0,
+  "cancelledCount": 0,
   "remaining": 2,
   "progressPercent": 33,
   "startedAt": "2026-06-08T12:00:05.000Z",
@@ -419,13 +423,27 @@ After create, redirect to a **campaign detail / progress** route (e.g. `/orgs/:o
 |-------|---------|--------------|
 | `pending` | Saved; Scheduler has not finished planning jobs yet | Spinner; poll every 5–10s |
 | `running` | Jobs scheduled and/or sending | Progress bar; poll every 10–30s |
-| `completed` | All targets processed (`messagesSent + failedCount >= totalTargets`) | Success state; stop polling |
+| `paused` | Admin paused; no new jobs dispatched | Show paused badge; poll every 10–30s |
+| `stopped` | Admin stopped; pending jobs cancelled | Stopped state; stop polling |
+| `completed` | All targets processed (`messagesSent + failedCount + cancelledCount >= totalTargets`) | Success state; stop polling |
 | `failed` | Planning failed (e.g. no accounts with auth token) | Error banner; link to connections |
+
+#### Campaign controls (admin only)
+
+| Method | Path | Effect |
+|--------|------|--------|
+| `POST` | `/orgs/:orgId/campaigns/:campaignId/pause` | `running` → `paused` |
+| `POST` | `/orgs/:orgId/campaigns/:campaignId/resume` | `paused` → `running` |
+| `POST` | `/orgs/:orgId/campaigns/:campaignId/stop` | `pending` / `running` / `paused` → `stopped`; cancels pending jobs |
+
+Response shape for all three: `{ id, status, cancelledCount, completedAt?, stoppedAt?, updatedAt }`.
+
+Invalid transitions return `400`. In-flight `dispatched` jobs may still send after pause or stop.
 
 **Fields to display:**
 
 - **Progress:** `progressPercent`, or `messagesSent + failedCount` / `totalTargets`
-- **Sent / failed / replies:** `messagesSent`, `failedCount`, `repliesReceived`
+- **Sent / failed / cancelled / replies:** `messagesSent`, `failedCount`, `cancelledCount`, `repliesReceived`
 - **ETA:** `expectedEndAt` (relative time, e.g. “~12 min remaining”)
 - **Message preview:** `messageText` (read-only on detail page)
 
@@ -439,6 +457,8 @@ Add to `x-executor-frontend/src/lib/hub/api.ts`:
 export type CampaignStatus =
   | 'pending'
   | 'running'
+  | 'paused'
+  | 'stopped'
   | 'completed'
   | 'failed';
 
@@ -499,8 +519,8 @@ export const campaignsApi = {
 | Component | Route | Role | Behavior |
 |-----------|-------|------|----------|
 | `CampaignCreateForm` | `/orgs/:orgId/campaigns/new` | admin | Textarea for targets (one `@handle` per line); message textarea; validate non-empty; block submit if no `hasAuthToken` connections |
-| `CampaignProgressPage` | `/orgs/:orgId/campaigns/:campaignId` | member+ | Poll `getStatus`; progress bar; stats grid; ETA from `expectedEndAt` |
-| `CampaignStatusBadge` | inline | all | Chip colors: pending=gray, running=blue, completed=green, failed=red |
+| `CampaignProgressPage` | `/orgs/:orgId/campaigns/:campaignId` | member+ | Poll `getStatus`; progress bar; stats grid; ETA from `expectedEndAt`; admin pause/resume/stop |
+| `CampaignStatusBadge` | inline | all | Chip colors: pending=gray, running=blue, paused=amber, stopped=outline, completed=green, failed=red |
 | `CampaignLaunchChecklist` | create page | admin | Warn if zero connections or zero `hasAuthToken` |
 
 **Parse usernames in the client** (optional UX — server also normalizes):
@@ -602,7 +622,9 @@ Base: `{HUB_ORIGIN}/xbot/v1/api/hub`
 | `POST` | `/orgs` | JWT | Create org; creator = `owner` |
 | `GET` | `/orgs` | JWT | List orgs with `role` |
 | `GET` | `/orgs/:orgId` | JWT + member | Includes prompts |
-| `PATCH` | `/orgs/:orgId/prompt` | JWT + admin | Update `systemPrompt` |
+| `PATCH` | `/orgs/:orgId/prompt` | JWT + admin | Save draft `systemPrompt` |
+| `POST` | `/orgs/:orgId/prompt/publish` | JWT + admin | Publish draft to production |
+| `POST` | `/orgs/:orgId/prompt/discard` | JWT + admin | Revert draft to published |
 | `GET` | `/orgs/:orgId/members` | JWT + admin | Members |
 | `POST` | `/orgs/:orgId/invites` | JWT + admin | Create invite |
 | `GET` | `/orgs/:orgId/invites` | JWT + admin | List invites |
@@ -615,6 +637,9 @@ Base: `{HUB_ORIGIN}/xbot/v1/api/hub`
 | `PATCH` | `/orgs/:orgId/connections/:id/xchat-pin` | JWT + admin | Encrypted `xchatPinEnc`; body `{ "xchatPin": "1234" }` (4–8 digits) |
 | `DELETE` | `/orgs/:orgId/connections/:id` | JWT + admin | Revoke + unsubscribe |
 | `POST` | `/orgs/:orgId/campaigns` | JWT + admin | Create bulk DM campaign; body `{ "targetUsernames", "messageText" }` |
+| `POST` | `/orgs/:orgId/campaigns/:campaignId/pause` | JWT + admin | Pause a running campaign |
+| `POST` | `/orgs/:orgId/campaigns/:campaignId/resume` | JWT + admin | Resume a paused campaign |
+| `POST` | `/orgs/:orgId/campaigns/:campaignId/stop` | JWT + admin | Stop campaign and cancel pending jobs |
 | `GET` | `/orgs/:orgId/campaigns/:campaignId/status` | JWT + member | Campaign progress and stats |
 
 Errors: `401` JWT, `403` not member/admin, `404`, `409` email taken, `410` invite invalid.

@@ -71,5 +71,4 @@ export class CampaignJob {
 }
 
 export const CampaignJobSchema = SchemaFactory.createForClass(CampaignJob);
-CampaignJobSchema.index({ orgId: 1, recipientXUserId: 1, status: 1 });
-CampaignJobSchema.index({ connectionId: 1, recipientXUserId: 1, status: 1 });
+CampaignJobSchema.index({ campaignId: 1, status: 1 });

@@ -8,6 +8,10 @@ import { Model, Types } from 'mongoose';
 import { NATS_SUBJECT_CAMPAIGN_CREATED, NatsJsService } from '@app/nats-js';
 import type { CampaignCreatedEvent } from '@app/shared';
 import { Campaign, CampaignDocument } from '../schemas/campaign.schema';
+import {
+  CampaignJob,
+  CampaignJobDocument,
+} from '../schemas/campaign-job.schema';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 
 const UNTITLED_CAMPAIGN_NAME = 'Untitled campaign';
@@ -17,6 +21,8 @@ export class CampaignsService {
   constructor(
     @InjectModel(Campaign.name)
     private readonly campaignModel: Model<CampaignDocument>,
+    @InjectModel(CampaignJob.name)
+    private readonly campaignJobModel: Model<CampaignJobDocument>,
     private readonly natsJs: NatsJsService,
   ) {}
 
@@ -45,6 +51,7 @@ export class CampaignsService {
       messagesScheduled: 0,
       repliesReceived: 0,
       failedCount: 0,
+      cancelledCount: 0,
     });
 
     const event: CampaignCreatedEvent = {
@@ -99,26 +106,108 @@ export class CampaignsService {
     };
   }
 
-  async getStatus(orgId: string, campaignId: string) {
-    const campaign = await this.campaignModel.findOne({
-      _id: new Types.ObjectId(campaignId),
-      orgId: new Types.ObjectId(orgId),
-    });
+  async pause(orgId: string, campaignId: string) {
+    const campaign = await this.findCampaignOrThrow(orgId, campaignId);
 
-    if (!campaign) {
+    if (campaign.status !== 'running') {
+      throw new BadRequestException(
+        `Cannot pause campaign with status "${campaign.status}"`,
+      );
+    }
+
+    const updated = await this.campaignModel.findOneAndUpdate(
+      {
+        _id: campaign._id,
+        orgId: campaign.orgId,
+        status: 'running',
+      },
+      { $set: { status: 'paused' } },
+      { returnDocument: 'after' },
+    );
+
+    if (!updated) {
+      throw new BadRequestException(
+        `Cannot pause campaign with status "${campaign.status}"`,
+      );
+    }
+
+    return this.toControlResponse(updated);
+  }
+
+  async resume(orgId: string, campaignId: string) {
+    const campaign = await this.findCampaignOrThrow(orgId, campaignId);
+
+    if (campaign.status !== 'paused') {
+      throw new BadRequestException(
+        `Cannot resume campaign with status "${campaign.status}"`,
+      );
+    }
+
+    const updated = await this.campaignModel.findOneAndUpdate(
+      {
+        _id: campaign._id,
+        orgId: campaign.orgId,
+        status: 'paused',
+      },
+      { $set: { status: 'running' } },
+      { returnDocument: 'after' },
+    );
+
+    if (!updated) {
+      throw new BadRequestException(
+        `Cannot resume campaign with status "${campaign.status}"`,
+      );
+    }
+
+    return this.toControlResponse(updated);
+  }
+
+  async stop(orgId: string, campaignId: string) {
+    const campaign = await this.findCampaignOrThrow(orgId, campaignId);
+
+    if (!['pending', 'running', 'paused'].includes(campaign.status)) {
+      throw new BadRequestException(
+        `Cannot stop campaign with status "${campaign.status}"`,
+      );
+    }
+
+    const now = new Date();
+    const cancelResult = await this.campaignJobModel.updateMany(
+      {
+        campaignId: campaign._id,
+        status: 'pending',
+      },
+      { $set: { status: 'cancelled' } },
+    );
+
+    const updated = await this.campaignModel.findOneAndUpdate(
+      {
+        _id: campaign._id,
+        orgId: campaign.orgId,
+      },
+      {
+        $set: {
+          status: 'stopped',
+          completedAt: now,
+          stoppedAt: now,
+        },
+        $inc: { cancelledCount: cancelResult.modifiedCount },
+      },
+      { returnDocument: 'after' },
+    );
+
+    if (!updated) {
       throw new NotFoundException('Campaign not found');
     }
 
-    const remaining =
-      campaign.totalTargets - campaign.messagesSent - campaign.failedCount;
-    const progressPercent =
-      campaign.totalTargets > 0
-        ? Math.round(
-            ((campaign.messagesSent + campaign.failedCount) /
-              campaign.totalTargets) *
-              100,
-          )
-        : 0;
+    return this.toControlResponse(updated);
+  }
+
+  async getStatus(orgId: string, campaignId: string) {
+    const campaign = await this.findCampaignOrThrow(orgId, campaignId);
+
+    const remaining = this.calculateRemaining(campaign);
+    const progressPercent = this.calculateProgressPercent(campaign);
 
     return {
       id: campaign._id.toString(),
@@ -133,26 +222,67 @@ export class CampaignsService {
       messagesSent: campaign.messagesSent,
       repliesReceived: campaign.repliesReceived,
       failedCount: campaign.failedCount,
+      cancelledCount: campaign.cancelledCount ?? 0,
       remaining,
       progressPercent,
       startedAt: campaign.startedAt,
       expectedEndAt: campaign.expectedEndAt,
       completedAt: campaign.completedAt,
+      stoppedAt: campaign.stoppedAt,
       createdAt: campaign.createdAt,
       updatedAt: campaign.updatedAt,
     };
   }
 
-  private toSummary(campaign: CampaignDocument) {
-    const progressPercent =
-      campaign.totalTargets > 0
-        ? Math.round(
-            ((campaign.messagesSent + campaign.failedCount) /
-              campaign.totalTargets) *
-              100,
-          )
-        : 0;
+  private async findCampaignOrThrow(
+    orgId: string,
+    campaignId: string,
+  ): Promise<CampaignDocument> {
+    const campaign = await this.campaignModel.findOne({
+      _id: new Types.ObjectId(campaignId),
+      orgId: new Types.ObjectId(orgId),
+    });
 
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    return campaign;
+  }
+
+  private toControlResponse(campaign: CampaignDocument) {
+    return {
+      id: campaign._id.toString(),
+      status: campaign.status,
+      cancelledCount: campaign.cancelledCount ?? 0,
+      completedAt: campaign.completedAt,
+      stoppedAt: campaign.stoppedAt,
+      updatedAt: campaign.updatedAt,
+    };
+  }
+
+  private calculateRemaining(campaign: CampaignDocument): number {
+    const processed =
+      campaign.messagesSent +
+      campaign.failedCount +
+      (campaign.cancelledCount ?? 0);
+    return Math.max(campaign.totalTargets - processed, 0);
+  }
+
+  private calculateProgressPercent(campaign: CampaignDocument): number {
+    if (campaign.totalTargets <= 0) {
+      return 0;
+    }
+
+    const processed =
+      campaign.messagesSent +
+      campaign.failedCount +
+      (campaign.cancelledCount ?? 0);
+
+    return Math.round((processed / campaign.totalTargets) * 100);
+  }
+
+  private toSummary(campaign: CampaignDocument) {
     return {
       id: campaign._id.toString(),
       name: this.resolveName(campaign),
@@ -160,7 +290,7 @@ export class CampaignsService {
       totalTargets: campaign.totalTargets,
       messagesSent: campaign.messagesSent,
       failedCount: campaign.failedCount,
-      progressPercent,
+      progressPercent: this.calculateProgressPercent(campaign),
       createdAt: campaign.createdAt,
       completedAt: campaign.completedAt,
     };

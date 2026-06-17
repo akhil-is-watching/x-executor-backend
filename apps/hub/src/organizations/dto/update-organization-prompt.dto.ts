@@ -4,7 +4,7 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
 export class UpdateOrganizationPromptDto {
   @ApiPropertyOptional({
     maxLength: 32_000,
-    description: 'LLM system prompt for inbound DM replies',
+    description: 'Draft system prompt (not live until published)',
   })
   @IsOptional()
   @IsString()

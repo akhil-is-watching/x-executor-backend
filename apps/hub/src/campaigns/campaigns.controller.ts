@@ -18,6 +18,7 @@ import { CampaignsService } from './campaigns.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import {
+  CampaignControlResponseDto,
   CampaignStatusResponseDto,
   CampaignSummaryDto,
   CreateCampaignResponseDto,
@@ -72,6 +73,54 @@ export class CampaignsController {
     @Body() dto: UpdateCampaignDto,
   ) {
     return this.campaignsService.updateName(orgId, campaignId, dto.name);
+  }
+
+  @Post(':campaignId/pause')
+  @UseGuards(OrgAdminGuard)
+  @ApiOperation({ summary: 'Pause a running campaign (admin only)' })
+  @ApiParam({ name: 'orgId', description: 'Organization ID' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign ID' })
+  @ApiResponse({ status: 200, type: CampaignControlResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid campaign status' })
+  @ApiResponse({ status: 403, description: 'Admin required' })
+  @ApiResponse({ status: 404, description: 'Campaign not found' })
+  pause(
+    @Param('orgId') orgId: string,
+    @Param('campaignId') campaignId: string,
+  ) {
+    return this.campaignsService.pause(orgId, campaignId);
+  }
+
+  @Post(':campaignId/resume')
+  @UseGuards(OrgAdminGuard)
+  @ApiOperation({ summary: 'Resume a paused campaign (admin only)' })
+  @ApiParam({ name: 'orgId', description: 'Organization ID' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign ID' })
+  @ApiResponse({ status: 200, type: CampaignControlResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid campaign status' })
+  @ApiResponse({ status: 403, description: 'Admin required' })
+  @ApiResponse({ status: 404, description: 'Campaign not found' })
+  resume(
+    @Param('orgId') orgId: string,
+    @Param('campaignId') campaignId: string,
+  ) {
+    return this.campaignsService.resume(orgId, campaignId);
+  }
+
+  @Post(':campaignId/stop')
+  @UseGuards(OrgAdminGuard)
+  @ApiOperation({ summary: 'Stop a campaign and cancel pending jobs (admin only)' })
+  @ApiParam({ name: 'orgId', description: 'Organization ID' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign ID' })
+  @ApiResponse({ status: 200, type: CampaignControlResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid campaign status' })
+  @ApiResponse({ status: 403, description: 'Admin required' })
+  @ApiResponse({ status: 404, description: 'Campaign not found' })
+  stop(
+    @Param('orgId') orgId: string,
+    @Param('campaignId') campaignId: string,
+  ) {
+    return this.campaignsService.stop(orgId, campaignId);
   }
 
   @Get(':campaignId/status')

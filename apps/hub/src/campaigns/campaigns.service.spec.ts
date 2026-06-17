@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { NatsJsService } from '@app/nats-js';
 import { Campaign } from '../schemas/campaign.schema';
+import { CampaignJob } from '../schemas/campaign-job.schema';
 import { CampaignsService } from './campaigns.service';
 
 describe('CampaignsService', () => {
@@ -27,6 +28,7 @@ describe('CampaignsService', () => {
     messagesScheduled: 1,
     repliesReceived: 0,
     failedCount: 0,
+    cancelledCount: 0,
     createdAt,
     updatedAt,
   };
@@ -36,6 +38,10 @@ describe('CampaignsService', () => {
     find: jest.fn(),
     findOne: jest.fn(),
     findOneAndUpdate: jest.fn(),
+  };
+
+  const campaignJobModel = {
+    updateMany: jest.fn(),
   };
 
   const natsJs = {
@@ -51,6 +57,10 @@ describe('CampaignsService', () => {
         {
           provide: getModelToken(Campaign.name),
           useValue: campaignModel,
+        },
+        {
+          provide: getModelToken(CampaignJob.name),
+          useValue: campaignJobModel,
         },
         {
           provide: NatsJsService,
@@ -155,6 +165,113 @@ describe('CampaignsService', () => {
     });
   });
 
+  describe('pause', () => {
+    it('pauses a running campaign', async () => {
+      campaignModel.findOne.mockResolvedValue(campaignDoc);
+      campaignModel.findOneAndUpdate.mockResolvedValue({
+        ...campaignDoc,
+        status: 'paused',
+      });
+
+      const result = await service.pause(orgId.toString(), campaignId.toString());
+
+      expect(campaignModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: campaignId, orgId, status: 'running' },
+        { $set: { status: 'paused' } },
+        { returnDocument: 'after' },
+      );
+      expect(result.status).toBe('paused');
+    });
+
+    it('rejects pause when campaign is not running', async () => {
+      campaignModel.findOne.mockResolvedValue({
+        ...campaignDoc,
+        status: 'completed',
+      });
+
+      await expect(
+        service.pause(orgId.toString(), campaignId.toString()),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('resume', () => {
+    it('resumes a paused campaign', async () => {
+      campaignModel.findOne.mockResolvedValue({
+        ...campaignDoc,
+        status: 'paused',
+      });
+      campaignModel.findOneAndUpdate.mockResolvedValue({
+        ...campaignDoc,
+        status: 'running',
+      });
+
+      const result = await service.resume(orgId.toString(), campaignId.toString());
+
+      expect(campaignModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: campaignId, orgId, status: 'paused' },
+        { $set: { status: 'running' } },
+        { returnDocument: 'after' },
+      );
+      expect(result.status).toBe('running');
+    });
+
+    it('rejects resume when campaign is not paused', async () => {
+      campaignModel.findOne.mockResolvedValue(campaignDoc);
+
+      await expect(
+        service.resume(orgId.toString(), campaignId.toString()),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('stop', () => {
+    it('stops a running campaign and cancels pending jobs', async () => {
+      campaignModel.findOne.mockResolvedValue(campaignDoc);
+      campaignJobModel.updateMany.mockResolvedValue({ modifiedCount: 3 });
+      const stoppedAt = new Date('2026-01-03T00:00:00.000Z');
+      campaignModel.findOneAndUpdate.mockResolvedValue({
+        ...campaignDoc,
+        status: 'stopped',
+        cancelledCount: 3,
+        completedAt: stoppedAt,
+        stoppedAt,
+      });
+
+      const result = await service.stop(orgId.toString(), campaignId.toString());
+
+      expect(campaignJobModel.updateMany).toHaveBeenCalledWith(
+        { campaignId, status: 'pending' },
+        { $set: { status: 'cancelled' } },
+      );
+      expect(campaignModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: campaignId, orgId },
+        {
+          $set: {
+            status: 'stopped',
+            completedAt: expect.any(Date),
+            stoppedAt: expect.any(Date),
+          },
+          $inc: { cancelledCount: 3 },
+        },
+        { returnDocument: 'after' },
+      );
+      expect(result.status).toBe('stopped');
+      expect(result.cancelledCount).toBe(3);
+    });
+
+    it('rejects stop when campaign is already completed', async () => {
+      campaignModel.findOne.mockResolvedValue({
+        ...campaignDoc,
+        status: 'completed',
+      });
+
+      await expect(
+        service.stop(orgId.toString(), campaignId.toString()),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
   describe('getStatus', () => {
     it('includes campaign name in status response', async () => {
       campaignModel.findOne.mockResolvedValue(campaignDoc);
@@ -165,6 +282,25 @@ describe('CampaignsService', () => {
       );
 
       expect(result.name).toBe('Q1 outreach');
+    });
+
+    it('includes cancelledCount in remaining calculation', async () => {
+      campaignModel.findOne.mockResolvedValue({
+        ...campaignDoc,
+        totalTargets: 10,
+        messagesSent: 2,
+        failedCount: 1,
+        cancelledCount: 3,
+      });
+
+      const result = await service.getStatus(
+        orgId.toString(),
+        campaignId.toString(),
+      );
+
+      expect(result.cancelledCount).toBe(3);
+      expect(result.remaining).toBe(4);
+      expect(result.progressPercent).toBe(60);
     });
 
     it('falls back to untitled when name is missing', async () => {

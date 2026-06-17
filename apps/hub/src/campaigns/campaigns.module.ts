@@ -3,6 +3,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { NatsJsModule } from '@app/nats-js';
 import { Campaign, CampaignSchema } from '../schemas/campaign.schema';
 import {
+  CampaignJob,
+  CampaignJobSchema,
+} from '../schemas/campaign-job.schema';
+import {
   OrganizationMembership,
   OrganizationMembershipSchema,
 } from '../schemas/organization-membership.schema';
@@ -16,6 +20,7 @@ import { CampaignsService } from './campaigns.service';
     NatsJsModule,
     MongooseModule.forFeature([
       { name: Campaign.name, schema: CampaignSchema },
+      { name: CampaignJob.name, schema: CampaignJobSchema },
       {
         name: OrganizationMembership.name,
         schema: OrganizationMembershipSchema,

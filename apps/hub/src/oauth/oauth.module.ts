@@ -8,12 +8,14 @@ import { InvitesModule } from '../invites/invites.module';
 import { CryptoModule } from '../crypto/crypto.module';
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { XConnection, XConnectionSchema } from '../schemas/x-connection.schema';
+import { ProxyModule } from '../proxy/proxy.module';
 
 @Module({
   imports: [
     InvitesModule,
     CryptoModule,
     WebhooksModule,
+    ProxyModule,
     MongooseModule.forFeature([
       { name: XConnection.name, schema: XConnectionSchema },
     ]),

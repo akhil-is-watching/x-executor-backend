@@ -107,6 +107,15 @@
         "tsConfigPath": "libs/shared/tsconfig.lib.json"
       }
     },
+    "webshare": {
+      "type": "library",
+      "root": "libs/webshare",
+      "entryFile": "index",
+      "sourceRoot": "libs/webshare/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/webshare/tsconfig.lib.json"
+      }
+    },
     "webhook": {
       "type": "application",
       "root": "apps/webhook",

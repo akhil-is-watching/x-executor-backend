@@ -525,6 +525,9 @@ export class GetxapiService {
     if (params.recipientUsername) {
       body.recipient_username = params.recipientUsername;
     }
+    if (params.proxy) {
+      body.proxy = params.proxy;
+    }
 
     const response = await fetch(`${baseUrl}/twitter/dm/send`, {
       method: 'POST',

@@ -80,6 +80,7 @@ export interface SendDmParams {
   recipientId?: string;
   recipientUsername?: string;
   text: string;
+  proxy?: string;
 }
 
 export interface GetXApiSendDmResponse {

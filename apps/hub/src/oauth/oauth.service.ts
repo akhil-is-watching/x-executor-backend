@@ -16,6 +16,7 @@ import {
   XConnectionDocument,
 } from '../schemas/x-connection.schema';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { ProxyPoolService } from '../proxy/proxy-pool.service';
 
 @Injectable()
 export class OAuthService {
@@ -26,6 +27,7 @@ export class OAuthService {
     private readonly tokenCrypto: TokenCryptoService,
     private readonly config: ConfigService,
     private readonly webhooksService: WebhooksService,
+    private readonly proxyPool: ProxyPoolService,
     @InjectModel(XConnection.name)
     private readonly connectionModel: Model<XConnectionDocument>,
   ) {}
@@ -41,6 +43,11 @@ export class OAuthService {
       oauthTokenSecret: requestToken.oauthTokenSecret,
       orgId: invite.orgId.toString(),
     });
+
+    await this.proxyPool.reserveForOAuth(
+      invite.orgId.toString(),
+      requestToken.oauthToken,
+    );
 
     res.redirect(requestToken.authUrl);
   }
@@ -129,6 +136,12 @@ export class OAuthService {
     if (!connection) {
       throw new InternalServerErrorException('Failed to save X connection');
     }
+
+    await this.proxyPool.assignFromReservation(
+      invite.orgId.toString(),
+      profile.id,
+      query.oauth_token,
+    );
 
     const subscription = await this.webhooksService.subscribeForConnection(
       connection,

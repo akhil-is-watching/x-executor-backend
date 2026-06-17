@@ -30,6 +30,9 @@ export class XConnection {
   xchatPinEnc?: string;
 
   @Prop()
+  proxyUrlEnc?: string;
+
+  @Prop()
   refreshTokenEnc?: string;
 
   @Prop()

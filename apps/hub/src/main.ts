@@ -4,21 +4,12 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HUB_API_PREFIX, resolveListenPort } from '@app/shared';
 import { HubModule } from './hub.module';
 
-function resolveCorsOrigin(): boolean | string | string[] {
-  const raw = process.env.CORS_ORIGINS?.trim();
-  if (!raw || raw === '*') {
-    return '*';
-  }
-  return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
-}
-
 async function bootstrap() {
   const app = await NestFactory.create(HubModule);
   app.enableCors({
-    origin: resolveCorsOrigin(),
+    origin: '*',
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-    optionsSuccessStatus: 204,
   });
   app.setGlobalPrefix(HUB_API_PREFIX);
   app.useGlobalPipes(

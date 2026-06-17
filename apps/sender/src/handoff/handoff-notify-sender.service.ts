@@ -40,6 +40,9 @@ export class HandoffNotifySenderService {
     }
 
     const authToken = this.tokenCrypto.decrypt(connection.authTokenEnc);
+    const proxy = connection.proxyUrlEnc
+      ? this.tokenCrypto.decrypt(connection.proxyUrlEnc)
+      : undefined;
     const recipientUsername = event.notifyHandle.replace(/^@/, '');
     const categoryLine = event.category
       ? `Handoff alert — ${event.category}`
@@ -55,6 +58,7 @@ export class HandoffNotifySenderService {
       authToken,
       recipientUsername,
       text,
+      proxy,
     });
 
     this.logger.log(

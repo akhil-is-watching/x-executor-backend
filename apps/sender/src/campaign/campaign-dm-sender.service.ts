@@ -51,10 +51,14 @@ export class CampaignDmSenderService {
 
     try {
       const authToken = this.tokenCrypto.decrypt(connection.authTokenEnc);
+      const proxy = connection.proxyUrlEnc
+        ? this.tokenCrypto.decrypt(connection.proxyUrlEnc)
+        : undefined;
       const result = await this.getxapi.sendDm({
         authToken,
         recipientUsername: event.recipientUsername,
         text: event.messageText,
+        proxy,
       });
 
       this.logger.log(

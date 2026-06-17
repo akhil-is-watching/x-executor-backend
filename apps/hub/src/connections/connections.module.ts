@@ -13,6 +13,7 @@ import { OrgAdminGuard } from '../guards/org-admin.guard';
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { CryptoModule } from '../crypto/crypto.module';
 import { OAuthModule } from '../oauth/oauth.module';
+import { ProxyModule } from '../proxy/proxy.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { OAuthModule } from '../oauth/oauth.module';
     RedisModule,
     OAuthModule,
     WebhooksModule,
+    ProxyModule,
     MongooseModule.forFeature([
       { name: XConnection.name, schema: XConnectionSchema },
       {

@@ -51,6 +51,12 @@
       ],
       "@app/shared/*": [
         "libs/shared/src/*"
+      ],
+      "@app/webshare": [
+        "libs/webshare/src"
+      ],
+      "@app/webshare/*": [
+        "libs/webshare/src/*"
       ]
     }
   }

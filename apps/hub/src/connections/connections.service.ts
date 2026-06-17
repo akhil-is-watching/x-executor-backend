@@ -6,6 +6,7 @@ import { XConnection, XConnectionDocument } from '../schemas/x-connection.schema
 import { TokenCryptoService } from '../crypto/token-crypto.service';
 import { XApiService } from '../oauth/x-api.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { ProxyPoolService } from '../proxy/proxy-pool.service';
 
 export const XCHAT_SECRET_REDIS_PREFIX = 'xchat:secret:';
 
@@ -20,6 +21,7 @@ export class ConnectionsService {
     private readonly xApi: XApiService,
     private readonly tokenCrypto: TokenCryptoService,
     private readonly redis: RedisService,
+    private readonly proxyPool: ProxyPoolService,
   ) {}
 
   async listForOrg(orgId: string) {
@@ -105,6 +107,7 @@ export class ConnectionsService {
     await this.webhooksService.revokeForConnection(connection);
     await this.logoutOAuthConnection(connection);
     await this.redis.del(`${XCHAT_SECRET_REDIS_PREFIX}${connection.xUserId}`);
+    await this.proxyPool.releaseForConnection(connection.xUserId);
 
     await this.connectionModel.updateOne(
       { _id: connection._id },
@@ -115,6 +118,7 @@ export class ConnectionsService {
           accessTokenSecretEnc: 1,
           authTokenEnc: 1,
           xchatPinEnc: 1,
+          proxyUrlEnc: 1,
           refreshTokenEnc: 1,
           tokenExpiresAt: 1,
         },
